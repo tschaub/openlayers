@@ -51,8 +51,8 @@ describe('ol.style.Shape', function() {
 
     it('accepts expressions', function() {
       var symbolizer = new ol.style.Shape({
-        size: new ol.Expression('sizeAttr'),
-        strokeColor: new ol.Expression('color')
+        size: ol.expr.parse('sizeAttr'),
+        strokeColor: ol.expr.parse('color')
       });
       expect(symbolizer).to.be.a(ol.style.Shape);
     });
@@ -63,8 +63,8 @@ describe('ol.style.Shape', function() {
 
     it('evaluates expressions with the given feature', function() {
       var symbolizer = new ol.style.Shape({
-        size: new ol.Expression('sizeAttr'),
-        opacity: new ol.Expression('opacityAttr'),
+        size: ol.expr.parse('sizeAttr'),
+        opacity: ol.expr.parse('opacityAttr'),
         fillColor: '#BADA55'
       });
 
@@ -99,8 +99,8 @@ describe('ol.style.Shape', function() {
 
     it('applies default type if none provided', function() {
       var symbolizer = new ol.style.Shape({
-        size: new ol.Expression('sizeAttr'),
-        opacity: new ol.Expression('opacityAttr'),
+        size: ol.expr.parse('sizeAttr'),
+        opacity: ol.expr.parse('opacityAttr'),
         fillColor: '#BADA55'
       });
 
@@ -117,10 +117,210 @@ describe('ol.style.Shape', function() {
 
   });
 
+  describe('#getFillColor()', function() {
+
+    it('returns the fill color', function() {
+      var symbolizer = new ol.style.Shape({
+        fillColor: '#ff0000'
+      });
+
+      var fillColor = symbolizer.getFillColor();
+      expect(fillColor).to.be.a(ol.expr.Literal);
+      expect(fillColor.getValue()).to.be('#ff0000');
+    });
+
+  });
+
+  describe('#getStrokeColor()', function() {
+
+    it('returns the stroke color', function() {
+      var symbolizer = new ol.style.Shape({
+        strokeColor: '#ff0000'
+      });
+
+      var strokeColor = symbolizer.getStrokeColor();
+      expect(strokeColor).to.be.a(ol.expr.Literal);
+      expect(strokeColor.getValue()).to.be('#ff0000');
+    });
+
+  });
+
+  describe('#getStrokeWidth()', function() {
+
+    it('returns the stroke width', function() {
+      var symbolizer = new ol.style.Shape({
+        strokeWidth: 10
+      });
+
+      var strokeWidth = symbolizer.getStrokeWidth();
+      expect(strokeWidth).to.be.a(ol.expr.Literal);
+      expect(strokeWidth.getValue()).to.be(10);
+    });
+
+  });
+
+  describe('#getOpacity()', function() {
+
+    it('returns the stroke opacity', function() {
+      var symbolizer = new ol.style.Shape({
+        strokeWidth: 1,
+        opacity: 0.123
+      });
+
+      var opacity = symbolizer.getOpacity();
+      expect(opacity).to.be.a(ol.expr.Literal);
+      expect(opacity.getValue()).to.be(0.123);
+    });
+
+  });
+
+  describe('#getType()', function() {
+
+    it('returns the shape type', function() {
+      var symbolizer = new ol.style.Shape({
+        strokeWidth: 1,
+        opacity: 0.123
+      });
+
+      var type = symbolizer.getType();
+      expect(type).to.be(ol.style.ShapeType.CIRCLE);
+    });
+
+  });
+
+  describe('#setFillColor()', function() {
+
+    it('sets the fill color', function() {
+      var symbolizer = new ol.style.Shape({
+        fillColor: '#ff0000'
+      });
+
+      symbolizer.setFillColor(new ol.expr.Literal('#0000ff'));
+
+      var fillColor = symbolizer.getFillColor();
+      expect(fillColor).to.be.a(ol.expr.Literal);
+      expect(fillColor.getValue()).to.be('#0000ff');
+    });
+
+    it('throws when not provided an expression', function() {
+      var symbolizer = new ol.style.Shape({
+        fillColor: '#ff0000'
+      });
+
+      expect(function() {
+        symbolizer.setFillColor('#0000ff');
+      }).throwException(function(err) {
+        expect(err).to.be.a(goog.asserts.AssertionError);
+      });
+    });
+
+  });
+
+  describe('#setStrokeColor()', function() {
+
+    it('sets the stroke color', function() {
+      var symbolizer = new ol.style.Shape({
+        strokeColor: '#ff0000'
+      });
+
+      symbolizer.setStrokeColor(new ol.expr.Literal('#0000ff'));
+
+      var strokeColor = symbolizer.getStrokeColor();
+      expect(strokeColor).to.be.a(ol.expr.Literal);
+      expect(strokeColor.getValue()).to.be('#0000ff');
+    });
+
+    it('throws when not provided an expression', function() {
+      var symbolizer = new ol.style.Shape({
+        strokeColor: '#ff0000'
+      });
+
+      expect(function() {
+        symbolizer.setStrokeColor('#0000ff');
+      }).throwException(function(err) {
+        expect(err).to.be.a(goog.asserts.AssertionError);
+      });
+    });
+
+  });
+
+  describe('#setStrokeWidth()', function() {
+
+    it('sets the stroke width', function() {
+      var symbolizer = new ol.style.Shape({
+        strokeWidth: 10
+      });
+      symbolizer.setStrokeWidth(new ol.expr.Literal(20));
+
+      var strokeWidth = symbolizer.getStrokeWidth();
+      expect(strokeWidth).to.be.a(ol.expr.Literal);
+      expect(strokeWidth.getValue()).to.be(20);
+    });
+
+    it('throws when not provided an expression', function() {
+      var symbolizer = new ol.style.Shape({
+        strokeWidth: 10
+      });
+
+      expect(function() {
+        symbolizer.setStrokeWidth(10);
+      }).throwException(function(err) {
+        expect(err).to.be.a(goog.asserts.AssertionError);
+      });
+    });
+
+  });
+
+  describe('#setType()', function() {
+
+    it('sets the shape type', function() {
+      var symbolizer = new ol.style.Shape({
+        strokeWidth: 1,
+        opacity: 0.123
+      });
+      symbolizer.setType(ol.style.ShapeType.CIRCLE);
+
+      var type = symbolizer.getType();
+      expect(type).to.be(ol.style.ShapeType.CIRCLE);
+    });
+
+  });
+
+  describe('#setOpacity()', function() {
+
+    it('sets the stroke opacity', function() {
+      var symbolizer = new ol.style.Shape({
+        strokeWidth: 1,
+        opacity: 0.123
+      });
+      symbolizer.setOpacity(new ol.expr.Literal(0.321));
+
+      var opacity = symbolizer.getOpacity();
+      expect(opacity).to.be.a(ol.expr.Literal);
+      expect(opacity.getValue()).to.be(0.321);
+    });
+
+    it('throws when not provided an expression', function() {
+      var symbolizer = new ol.style.Shape({
+        strokeWidth: 1,
+        opacity: 1
+      });
+
+      expect(function() {
+        symbolizer.setOpacity(0.5);
+      }).throwException(function(err) {
+        expect(err).to.be.a(goog.asserts.AssertionError);
+      });
+    });
+
+  });
 });
 
-goog.require('ol.Expression');
+goog.require('goog.asserts.AssertionError');
+
 goog.require('ol.Feature');
+goog.require('ol.expr');
+goog.require('ol.expr.Literal');
 goog.require('ol.style.Shape');
 goog.require('ol.style.ShapeLiteral');
 goog.require('ol.style.ShapeType');

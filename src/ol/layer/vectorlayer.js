@@ -5,12 +5,20 @@ goog.require('goog.asserts');
 goog.require('goog.events.EventType');
 goog.require('goog.object');
 goog.require('ol.Feature');
+goog.require('ol.expr');
+goog.require('ol.expr.Literal');
+goog.require('ol.expr.Logical');
+goog.require('ol.expr.LogicalOp');
+goog.require('ol.expr.functions');
+goog.require('ol.extent');
+goog.require('ol.geom.GeometryType');
 goog.require('ol.geom.SharedVertices');
 goog.require('ol.layer.Layer');
 goog.require('ol.proj');
 goog.require('ol.source.Vector');
 goog.require('ol.structs.RTree');
 goog.require('ol.style.Style');
+goog.require('ol.style.TextLiteral');
 
 
 
@@ -77,35 +85,65 @@ ol.layer.FeatureCache.prototype.add = function(feature) {
 
 
 /**
- * @param {ol.filter.Filter=} opt_filter Optional filter.
+ * @param {ol.expr.Expression=} opt_expr Expression for filtering.
  * @return {Object.<string, ol.Feature>} Object of features, keyed by id.
  */
-ol.layer.FeatureCache.prototype.getFeaturesObject = function(opt_filter) {
-  var i, features;
-  if (!goog.isDef(opt_filter)) {
+ol.layer.FeatureCache.prototype.getFeaturesObject = function(opt_expr) {
+  var features;
+  if (!goog.isDef(opt_expr)) {
     features = this.idLookup_;
   } else {
-    if (opt_filter instanceof ol.filter.Geometry) {
-      features = this.geometryTypeIndex_[opt_filter.getType()];
-    } else if (opt_filter instanceof ol.filter.Extent) {
-      features = this.rTree_.searchReturningObject(opt_filter.getExtent());
-    } else if (opt_filter instanceof ol.filter.Logical &&
-        opt_filter.operator === ol.filter.LogicalOperator.AND) {
-      var filters = opt_filter.getFilters();
-      if (filters.length === 2) {
-        var filter, geometryFilter, extentFilter;
-        for (i = 0; i <= 1; ++i) {
-          filter = filters[i];
-          if (filter instanceof ol.filter.Geometry) {
-            geometryFilter = filter;
-          } else if (filter instanceof ol.filter.Extent) {
-            extentFilter = filter;
+    // check for geometryType or extent expression
+    var name = ol.expr.isLibCall(opt_expr);
+    if (name === ol.expr.functions.GEOMETRY_TYPE) {
+      var args = /** @type {ol.expr.Call} */ (opt_expr).getArgs();
+      goog.asserts.assert(args.length === 1);
+      goog.asserts.assert(args[0] instanceof ol.expr.Literal);
+      var type = /** @type {ol.expr.Literal } */ (args[0]).evaluate();
+      goog.asserts.assertString(type);
+      features = this.geometryTypeIndex_[type];
+    } else if (name === ol.expr.functions.EXTENT) {
+      var args = /** @type {ol.expr.Call} */ (opt_expr).getArgs();
+      goog.asserts.assert(args.length === 4);
+      var extent = [];
+      for (var i = 0; i < 4; ++i) {
+        goog.asserts.assert(args[i] instanceof ol.expr.Literal);
+        extent[i] = /** @type {ol.expr.Literal} */ (args[i]).evaluate();
+        goog.asserts.assertNumber(extent[i]);
+      }
+      features = this.rTree_.searchReturningObject(extent);
+    } else {
+      // not a call expression, check logical
+      if (opt_expr instanceof ol.expr.Logical) {
+        var op = /** @type {ol.expr.Logical} */ (opt_expr).getOperator();
+        if (op === ol.expr.LogicalOp.AND) {
+          var expressions = [opt_expr.getLeft(), opt_expr.getRight()];
+          var expr, args, type, extent;
+          for (var i = 0; i <= 1; ++i) {
+            expr = expressions[i];
+            name = ol.expr.isLibCall(expr);
+            if (name === ol.expr.functions.GEOMETRY_TYPE) {
+              args = /** @type {ol.expr.Call} */ (expr).getArgs();
+              goog.asserts.assert(args.length === 1);
+              goog.asserts.assert(args[0] instanceof ol.expr.Literal);
+              type = /** @type {ol.expr.Literal } */ (args[0]).evaluate();
+              goog.asserts.assertString(type);
+            } else if (name === ol.expr.functions.EXTENT) {
+              args = /** @type {ol.expr.Call} */ (expr).getArgs();
+              goog.asserts.assert(args.length === 4);
+              extent = [];
+              for (var j = 0; j < 4; ++j) {
+                goog.asserts.assert(args[j] instanceof ol.expr.Literal);
+                extent[j] =
+                    /** @type {ol.expr.Literal} */ (args[j]).evaluate();
+                goog.asserts.assertNumber(extent[j]);
+              }
+            }
           }
-        }
-        if (extentFilter && geometryFilter) {
-          var type = geometryFilter.getType();
-          features = goog.object.isEmpty(this.geometryTypeIndex_[type]) ? {} :
-              this.rTree_.searchReturningObject(extentFilter.getExtent(), type);
+          if (type && extent) {
+            features = this.getFeaturesObjectForExtent(extent,
+                /** @type {ol.geom.GeometryType} */ (type));
+          }
         }
       }
     }
@@ -116,7 +154,7 @@ ol.layer.FeatureCache.prototype.getFeaturesObject = function(opt_filter) {
       features = {};
       for (i in candidates) {
         feature = candidates[i];
-        if (opt_filter.applies(feature) === true) {
+        if (ol.expr.evaluateFeature(opt_expr, feature)) {
           features[i] = feature;
         }
       }
@@ -127,12 +165,22 @@ ol.layer.FeatureCache.prototype.getFeaturesObject = function(opt_filter) {
 
 
 /**
- * @param {ol.filter.Geometry} filter Geometry type filter.
- * @return {Array.<ol.Feature>} Array of features.
- * @private
+ * Get all features whose bounding box intersects the provided extent.
+ *
+ * @param {ol.Extent} extent Bounding extent.
+ * @param {ol.geom.GeometryType=} opt_type Optional geometry type.
+ * @return {Object.<string, ol.Feature>} Features.
  */
-ol.layer.FeatureCache.prototype.getFeaturesByGeometryType_ = function(filter) {
-  return goog.object.getValues(this.geometryTypeIndex_[filter.getType()]);
+ol.layer.FeatureCache.prototype.getFeaturesObjectForExtent = function(extent,
+    opt_type) {
+  var features;
+  if (goog.isDef(opt_type) &&
+      goog.object.isEmpty(this.geometryTypeIndex_[opt_type])) {
+    features = {};
+  } else {
+    features = this.rTree_.searchReturningObject(extent, opt_type);
+  }
+  return features;
 };
 
 
@@ -151,6 +199,34 @@ ol.layer.FeatureCache.prototype.getFeaturesByIds_ = function(ids) {
   }
   return features;
 };
+
+
+/**
+ * Remove a feature from the cache.
+ * @param {ol.Feature} feature Feature.
+ */
+ol.layer.FeatureCache.prototype.remove = function(feature) {
+  var id = goog.getUid(feature).toString(),
+      geometry = feature.getGeometry();
+
+  delete this.idLookup_[id];
+
+  // index by geometry type and bounding box
+  if (!goog.isNull(geometry)) {
+    var geometryType = geometry.getType();
+    delete this.geometryTypeIndex_[geometryType][id];
+    this.rTree_.remove(geometry.getBounds(), feature);
+  }
+};
+
+
+/**
+ * TODO: Create a VectorLayerEvent with ADD and REMOVE event types
+ * @typedef {{extent: (ol.Extent|undefined),
+ *            features: (Array.<ol.Feature>|undefined),
+ *            type: goog.events.EventType}}
+ */
+ol.layer.VectorLayerEventObject;
 
 
 
@@ -215,11 +291,21 @@ goog.inherits(ol.layer.Vector, ol.layer.Layer);
  * @param {Array.<ol.Feature>} features Array of features.
  */
 ol.layer.Vector.prototype.addFeatures = function(features) {
+  var extent = ol.extent.createEmpty(),
+      feature, geometry;
   for (var i = 0, ii = features.length; i < ii; ++i) {
-    this.featureCache_.add(features[i]);
+    feature = features[i];
+    this.featureCache_.add(feature);
+    geometry = feature.getGeometry();
+    if (!goog.isNull(geometry)) {
+      ol.extent.extend(extent, geometry.getBounds());
+    }
   }
-  // TODO: events for real - listeners want features and extent here
-  this.dispatchEvent(goog.events.EventType.CHANGE);
+  this.dispatchEvent(/** @type {ol.layer.VectorLayerEventObject} */ ({
+    extent: extent,
+    features: features,
+    type: goog.events.EventType.CHANGE
+  }));
 };
 
 
@@ -232,21 +318,26 @@ ol.layer.Vector.prototype.getVectorSource = function() {
 
 
 /**
- * @param {ol.filter.Filter=} opt_filter Optional filter.
- * @return {Array.<ol.Feature>} Array of features.
+ * Get all features whose bounding box intersects the provided extent. This
+ * method is intended for being called by the renderer. When null is returned,
+ * the renderer should not waste time rendering, and `opt_callback` is
+ * usually a function that requests a renderFrame, which will be called as soon
+ * as the data for `extent` is available.
+ *
+ * @param {ol.Extent} extent Bounding extent.
+ * @param {ol.Projection} projection Target projection.
+ * @param {ol.geom.GeometryType=} opt_type Optional geometry type.
+ * @param {Function=} opt_callback Callback to call when data is parsed.
+ * @return {Object.<string, ol.Feature>} Features or null if source is loading
+ *     data for `extent`.
  */
-ol.layer.Vector.prototype.getFeatures = function(opt_filter) {
-  return goog.object.getValues(
-      this.featureCache_.getFeaturesObject(opt_filter));
-};
-
-
-/**
- * @param {ol.filter.Filter=} opt_filter Optional filter.
- * @return {Object.<string, ol.Feature>} Features.
- */
-ol.layer.Vector.prototype.getFeaturesObject = function(opt_filter) {
-  return this.featureCache_.getFeaturesObject(opt_filter);
+ol.layer.Vector.prototype.getFeaturesObjectForExtent = function(extent,
+    projection, opt_type, opt_callback) {
+  var source = this.getSource();
+  return source.prepareFeatures(this, extent, projection, opt_callback) ==
+      ol.source.VectorLoadState.LOADING ?
+          null :
+          this.featureCache_.getFeaturesObjectForExtent(extent, opt_type);
 };
 
 
@@ -276,14 +367,17 @@ ol.layer.Vector.prototype.getPolygonVertices = function() {
 
 /**
  * @param {Object.<string, ol.Feature>} features Features.
- * @return {Array.<Array>} symbolizers for features.
+ * @return {Array.<Array>} symbolizers for features. Each array in this array
+ *     contains 3 items: an array of features, the symbolizer literal, and
+ *     an array with optional additional data for each feature.
  */
 ol.layer.Vector.prototype.groupFeaturesBySymbolizerLiteral =
     function(features) {
   var uniqueLiterals = {},
       featuresBySymbolizer = [],
       style = this.style_,
-      i, j, l, feature, literals, numLiterals, literal, uniqueLiteral, key;
+      i, j, l, feature, literals, numLiterals, literal, uniqueLiteral, key,
+      item;
   for (i in features) {
     feature = features[i];
     literals = feature.getSymbolizerLiterals();
@@ -305,9 +399,17 @@ ol.layer.Vector.prototype.groupFeaturesBySymbolizerLiteral =
       key = goog.getUid(literal);
       if (!goog.object.containsKey(uniqueLiterals, key)) {
         uniqueLiterals[key] = featuresBySymbolizer.length;
-        featuresBySymbolizer.push([[], literal]);
+        featuresBySymbolizer.push([
+          /** @type {Array.<ol.Feature>} */ ([]),
+          /** @type {ol.style.SymbolizerLiteral} */ (literal),
+          /** @type {Array} */ ([])
+        ]);
       }
-      featuresBySymbolizer[uniqueLiterals[key]][0].push(feature);
+      item = featuresBySymbolizer[uniqueLiterals[key]];
+      item[0].push(feature);
+      if (literal instanceof ol.style.TextLiteral) {
+        item[2].push(literals[j].text);
+      }
     }
   }
   return featuresBySymbolizer;
@@ -323,14 +425,13 @@ ol.layer.Vector.prototype.groupFeaturesBySymbolizerLiteral =
 ol.layer.Vector.prototype.parseFeatures = function(data, parser, projection) {
   var features;
 
-  var lookup = {
-    'point': this.pointVertices_,
-    'linestring': this.lineVertices_,
-    'polygon': this.polygonVertices_,
-    'multipoint': this.pointVertices_,
-    'multilinstring': this.lineVertices_,
-    'multipolygon': this.polygonVertices_
-  };
+  var lookup = {};
+  lookup[ol.geom.GeometryType.POINT] = this.pointVertices_;
+  lookup[ol.geom.GeometryType.LINESTRING] = this.lineVertices_;
+  lookup[ol.geom.GeometryType.POLYGON] = this.polygonVertices_;
+  lookup[ol.geom.GeometryType.MULTIPOINT] = this.pointVertices_;
+  lookup[ol.geom.GeometryType.MULTILINESTRING] = this.lineVertices_;
+  lookup[ol.geom.GeometryType.MULTIPOLYGON] = this.polygonVertices_;
 
   var callback = function(feature, type) {
     return lookup[type];
@@ -395,6 +496,29 @@ ol.layer.Vector.prototype.getTransformFeatureInfo = function() {
 
 
 /**
+ * Remove features from the layer.
+ * @param {Array.<ol.Feature>} features Features to remove.
+ */
+ol.layer.Vector.prototype.removeFeatures = function(features) {
+  var extent = ol.extent.createEmpty(),
+      feature, geometry;
+  for (var i = 0, ii = features.length; i < ii; ++i) {
+    feature = features[i];
+    this.featureCache_.remove(feature);
+    geometry = feature.getGeometry();
+    if (!goog.isNull(geometry)) {
+      ol.extent.extend(extent, geometry.getBounds());
+    }
+  }
+  this.dispatchEvent(/** @type {ol.layer.VectorLayerEventObject} */ ({
+    extent: extent,
+    features: features,
+    type: goog.events.EventType.CHANGE
+  }));
+};
+
+
+/**
  * @param {Array.<ol.Feature>} features Features.
  * @return {string} Feature info.
  */
@@ -403,10 +527,3 @@ ol.layer.Vector.uidTransformFeatureInfo = function(features) {
       function(feature) { return goog.getUid(feature); });
   return featureIds.join(', ');
 };
-
-
-goog.require('ol.filter.Extent');
-goog.require('ol.filter.Geometry');
-goog.require('ol.filter.Logical');
-goog.require('ol.filter.LogicalOperator');
-goog.require('ol.geom.GeometryType');
