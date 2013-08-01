@@ -16,20 +16,12 @@ module.exports = function(grunt) {
       options: {
         configFile: 'test/karma.conf.js'
       },
-      watch: {
-        // run continuously with options from configFile
-      },
+      // run Karma with options from configFile
+      watch: {},
+      // run tests with Karma once
       single: {
-        // run once
         options: {
           singleRun: true
-        }
-      },
-      phantom: {
-        // run once with PhantomJS
-        options: {
-          singleRun: true,
-          browsers: ['PhantomJS']
         }
       }
     },
@@ -59,16 +51,11 @@ module.exports = function(grunt) {
           src: ['<%= files.INTERNAL_SRC %>', '<%= files.EXTERNAL_SRC %>']
         }]
       }
-    },
-    clean: {
     }
   });
 
   // this is required by the build task
   grunt.loadNpmTasks('grunt-openlayers');
-  grunt.loadNpmTasks('grunt-contrib-clean');
-  grunt.loadNpmTasks('grunt-contrib-copy');
-  grunt.loadNpmTasks('grunt-jsdoc');
 
   // pull in all tasks in the tasks dir
   grunt.loadTasks('tasks');
