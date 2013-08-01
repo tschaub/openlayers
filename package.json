@@ -21,6 +21,7 @@
   "scripts": {
     "postinstall": "grunt build",
     "test": "grunt karma:single",
+    "postinstall": "grunt build",
     "start": "grunt watch"
   }
 }
