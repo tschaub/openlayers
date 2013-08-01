@@ -32,11 +32,43 @@ module.exports = function(grunt) {
           browsers: ['PhantomJS']
         }
       }
+    },
+    lint: {
+      source:{
+        options: {
+          flags: ['--jslint_error=all', '--strict'],
+          reporter: {
+            name: 'console'
+          }
+        },
+        files: [{
+          src: ['<%= files.SRC %>']
+        }]
+      },
+      generated: {
+        options: {
+          flags: ['--jslint_error=all', 
+                  '--disable=110',
+                  '--limited_doc_files=<%= files.LIMITED_DOC_FILES %>', 
+                  '--strict'],
+          reporter: {
+            name: 'console'
+          }
+        },
+        files: [{
+          src: ['<%= files.INTERNAL_SRC %>', '<%= files.EXTERNAL_SRC %>']
+        }]
+      }
+    },
+    clean: {
     }
   });
 
   // this is required by the build task
   grunt.loadNpmTasks('grunt-openlayers');
+  grunt.loadNpmTasks('grunt-contrib-clean');
+  grunt.loadNpmTasks('grunt-contrib-copy');
+  grunt.loadNpmTasks('grunt-jsdoc');
 
   // pull in all tasks in the tasks dir
   grunt.loadTasks('tasks');
