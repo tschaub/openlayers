@@ -16,12 +16,12 @@
     "grunt": "0.4.1",
     "grunt-openlayers": "0.2.0",
     "grunt-gjslint": "~0.1.1",
-    "grunt-touch": "~0.1.0"
+    "grunt-touch": "~0.1.0",
+    "grunt-contrib-copy": "~0.4.1"
   },
   "scripts": {
     "postinstall": "grunt build",
     "test": "grunt karma:single",
-    "postinstall": "grunt build",
     "start": "grunt watch"
   }
 }
