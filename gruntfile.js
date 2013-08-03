@@ -54,13 +54,22 @@ module.exports = function(grunt) {
     }
   });
 
+
   // this is required by the build task
   grunt.loadNpmTasks('grunt-openlayers');
+  grunt.loadNpmTasks('grunt-contrib-copy');
+  grunt.loadNpmTasks('grunt-contrib-clean');
+  grunt.loadNpmTasks('grunt-jsdoc');
 
   // pull in all tasks in the tasks dir
   grunt.loadTasks('tasks');
 
+  // other tasks use the current git branch, this ensures we
+  // load it in a synchronous way.
+  grunt.task.run('detect-current-branch');
+
   grunt.registerTask('watch', ['karma:watch']);
   grunt.registerTask('default', ['build']);
+  
 
 };
