@@ -17,7 +17,7 @@ module.exports = function(grunt) {
       if (err) {
         grunt.fatal(err);
       }
-      grunt.verbose.log(output);
+      grunt.verbose.writeln(output);
       done();
     });
   });
