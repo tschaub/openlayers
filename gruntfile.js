@@ -16,32 +16,61 @@ module.exports = function(grunt) {
       options: {
         configFile: 'test/karma.conf.js'
       },
-      watch: {
-        // run continuously with options from configFile
-      },
+      // run Karma with options from configFile
+      watch: {},
+      // run tests with Karma once
       single: {
-        // run once
         options: {
           singleRun: true
         }
-      },
-      phantom: {
-        // run once with PhantomJS
+      }
+    },
+    lint: {
+      source:{
         options: {
-          singleRun: true,
-          browsers: ['PhantomJS']
-        }
+          flags: ['--jslint_error=all', '--strict'],
+          reporter: {
+            name: 'console'
+          }
+        },
+        files: [{
+          src: ['<%= files.SRC %>']
+        }]
+      },
+      generated: {
+        options: {
+          flags: ['--jslint_error=all', 
+                  '--disable=110',
+                  '--limited_doc_files=<%= files.LIMITED_DOC_FILES %>', 
+                  '--strict'],
+          reporter: {
+            name: 'console'
+          }
+        },
+        files: [{
+          src: ['<%= files.INTERNAL_SRC %>', '<%= files.EXTERNAL_SRC %>']
+        }]
       }
     }
   });
 
+
   // this is required by the build task
   grunt.loadNpmTasks('grunt-openlayers');
+  grunt.loadNpmTasks('grunt-contrib-copy');
+  grunt.loadNpmTasks('grunt-contrib-clean');
+  grunt.loadNpmTasks('grunt-jsdoc');
+  grunt.loadNpmTasks('grunt-todos');
 
   // pull in all tasks in the tasks dir
   grunt.loadTasks('tasks');
 
+  // other tasks use the current git branch, this ensures we
+  // load it in a synchronous way.
+  grunt.task.run('detect-current-branch');
+
   grunt.registerTask('watch', ['karma:watch']);
   grunt.registerTask('default', ['build']);
+  
 
 };
