@@ -14,7 +14,7 @@ import Triangulation from '../reproj/Triangulation.js';
 
 
 /**
- * @typedef {function(number, number, number, number) : module:ol/Tile} FunctionType
+ * @typedef {function(number, number, number, number) : import("../Tile.js").default} FunctionType
  */
 
 
@@ -24,15 +24,15 @@ class ReprojTile extends Tile {
    * Class encapsulating single reprojected tile.
    * See {@link module:ol/source/TileImage~TileImage}.
    *
-   * @param {module:ol/proj/Projection} sourceProj Source projection.
-   * @param {module:ol/tilegrid/TileGrid} sourceTileGrid Source tile grid.
-   * @param {module:ol/proj/Projection} targetProj Target projection.
-   * @param {module:ol/tilegrid/TileGrid} targetTileGrid Target tile grid.
-   * @param {module:ol/tilecoord~TileCoord} tileCoord Coordinate of the tile.
-   * @param {module:ol/tilecoord~TileCoord} wrappedTileCoord Coordinate of the tile wrapped in X.
+   * @param {import("../proj/Projection.js").default} sourceProj Source projection.
+   * @param {import("../tilegrid/TileGrid.js").default} sourceTileGrid Source tile grid.
+   * @param {import("../proj/Projection.js").default} targetProj Target projection.
+   * @param {import("../tilegrid/TileGrid.js").default} targetTileGrid Target tile grid.
+   * @param {import("../tilecoord.js").TileCoord} tileCoord Coordinate of the tile.
+   * @param {import("../tilecoord.js").TileCoord} wrappedTileCoord Coordinate of the tile wrapped in X.
    * @param {number} pixelRatio Pixel ratio.
    * @param {number} gutter Gutter of the source tiles.
-   * @param {module:ol/reproj/Tile~FunctionType} getTileFunction
+   * @param {FunctionType} getTileFunction
    *     Function returning source tiles (z, x, y, pixelRatio).
    * @param {number=} opt_errorThreshold Acceptable reprojection error (in px).
    * @param {boolean=} opt_renderEdges Render reprojection edges.
@@ -78,31 +78,31 @@ class ReprojTile extends Tile {
 
     /**
      * @private
-     * @type {module:ol/tilegrid/TileGrid}
+     * @type {import("../tilegrid/TileGrid.js").default}
      */
     this.sourceTileGrid_ = sourceTileGrid;
 
     /**
      * @private
-     * @type {module:ol/tilegrid/TileGrid}
+     * @type {import("../tilegrid/TileGrid.js").default}
      */
     this.targetTileGrid_ = targetTileGrid;
 
     /**
      * @private
-     * @type {module:ol/tilecoord~TileCoord}
+     * @type {import("../tilecoord.js").TileCoord}
      */
     this.wrappedTileCoord_ = wrappedTileCoord ? wrappedTileCoord : tileCoord;
 
     /**
      * @private
-     * @type {!Array.<module:ol/Tile>}
+     * @type {!Array.<import("../Tile.js").default>}
      */
     this.sourceTiles_ = [];
 
     /**
      * @private
-     * @type {Array.<module:ol/events~EventsKey>}
+     * @type {Array.<import("../events.js").EventsKey>}
      */
     this.sourcesListenerKeys_ = null;
 
@@ -154,7 +154,7 @@ class ReprojTile extends Tile {
 
     /**
      * @private
-     * @type {!module:ol/reproj/Triangulation}
+     * @type {!import("./Triangulation.js").default}
      */
     this.triangulation_ = new Triangulation(
       sourceProj, targetProj, limitedTargetExtent, maxSourceExtent,

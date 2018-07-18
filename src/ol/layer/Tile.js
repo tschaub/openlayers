@@ -11,7 +11,7 @@ import {assign} from '../obj.js';
  * @typedef {Object} Options
  * @property {number} [opacity=1] Opacity (0, 1).
  * @property {boolean} [visible=true] Visibility.
- * @property {module:ol/extent~Extent} [extent] The bounding extent for layer rendering.  The layer will not be
+ * @property {import("../extent.js").Extent} [extent] The bounding extent for layer rendering.  The layer will not be
  * rendered outside of this extent.
  * @property {number} [zIndex=0] The z-index for layer rendering.  At rendering time, the layers
  * will be ordered, first by Z-index and then by position.
@@ -21,8 +21,8 @@ import {assign} from '../obj.js';
  * be visible.
  * @property {number} [preload=0] Preload. Load low-resolution tiles up to `preload` levels. `0`
  * means no preloading.
- * @property {module:ol/source/Tile} [source] Source for this layer.
- * @property {module:ol/PluggableMap} [map] Sets the layer as overlay on a map. The map will not manage
+ * @property {import("../source/Tile.js").default} [source] Source for this layer.
+ * @property {import("../PluggableMap.js").default} [map] Sets the layer as overlay on a map. The map will not manage
  * this layer in its layers collection, and the layer will be rendered on top. This is useful for
  * temporary layers. The standard way to add a layer to a map and have it managed by the map is to
  * use {@link module:ol/Map#addLayer}.
@@ -39,7 +39,7 @@ class TileLayer extends Layer {
    * property on the layer object; for example, setting `title: 'My Title'` in the
    * options means that `title` is observable, and has get/set accessors.
    *
-   * @param {module:ol/layer/Tile~Options=} opt_options Tile layer options.
+   * @param {Options=} opt_options Tile layer options.
    * @api
    */
   constructor(opt_options) {
@@ -58,7 +58,7 @@ class TileLayer extends Layer {
     /**
     * The layer type.
     * @protected
-    * @type {module:ol/LayerType}
+    * @type {import("../LayerType.js").default}
     */
     this.type = LayerType.TILE;
 
@@ -109,7 +109,7 @@ class TileLayer extends Layer {
 /**
  * Return the associated {@link module:ol/source/Tile tilesource} of the layer.
  * @function
- * @return {module:ol/source/Tile} Source.
+ * @return {import("../source/Tile.js").default} Source.
  * @api
  */
 TileLayer.prototype.getSource;

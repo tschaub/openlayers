@@ -18,7 +18,7 @@ import {defaultOrder as defaultRenderOrder, getTolerance as getRenderTolerance, 
 class CanvasVectorLayerRenderer extends CanvasLayerRenderer {
 
   /**
-   * @param {module:ol/layer/Vector} vectorLayer Vector layer.
+   * @param {import("../../layer/Vector.js").default} vectorLayer Vector layer.
    * @api
    */
   constructor(vectorLayer) {
@@ -51,19 +51,19 @@ class CanvasVectorLayerRenderer extends CanvasLayerRenderer {
 
     /**
      * @private
-     * @type {module:ol/extent~Extent}
+     * @type {import("../../extent.js").Extent}
      */
     this.renderedExtent_ = createEmpty();
 
     /**
      * @private
-     * @type {function(module:ol/Feature, module:ol/Feature): number|null}
+     * @type {function(import("../../Feature.js").default, import("../../Feature.js").default): number|null}
      */
     this.renderedRenderOrder_ = null;
 
     /**
      * @private
-     * @type {module:ol/render/canvas/ReplayGroup}
+     * @type {import("../../render/canvas/ReplayGroup.js").default}
      */
     this.replayGroup_ = null;
 
@@ -92,8 +92,8 @@ class CanvasVectorLayerRenderer extends CanvasLayerRenderer {
 
   /**
    * @param {CanvasRenderingContext2D} context Context.
-   * @param {module:ol/PluggableMap~FrameState} frameState Frame state.
-   * @param {module:ol/layer/Layer~State} layerState Layer state.
+   * @param {import("../../PluggableMap.js").FrameState} frameState Frame state.
+   * @param {import("../../layer/Layer.js").State} layerState Layer state.
    */
   compose(context, frameState, layerState) {
     const extent = frameState.extent;
@@ -104,7 +104,7 @@ class CanvasVectorLayerRenderer extends CanvasLayerRenderer {
     const projection = viewState.projection;
     const rotation = viewState.rotation;
     const projectionExtent = projection.getExtent();
-    const vectorSource = /** @type {module:ol/source/Vector} */ (this.getLayer().getSource());
+    const vectorSource = /** @type {import("../../source/Vector.js").default} */ (this.getLayer().getSource());
 
     let transform = this.getTransform(frameState, 0);
 
@@ -112,14 +112,14 @@ class CanvasVectorLayerRenderer extends CanvasLayerRenderer {
     const clipExtent = layerState.extent;
     const clipped = clipExtent !== undefined;
     if (clipped) {
-      this.clip(context, frameState, /** @type {module:ol/extent~Extent} */ (clipExtent));
+      this.clip(context, frameState, /** @type {import("../../extent.js").Extent} */ (clipExtent));
     }
     const replayGroup = this.replayGroup_;
     if (replayGroup && !replayGroup.isEmpty()) {
       if (this.declutterTree_) {
         this.declutterTree_.clear();
       }
-      const layer = /** @type {module:ol/layer/Vector} */ (this.getLayer());
+      const layer = /** @type {import("../../layer/Vector.js").default} */ (this.getLayer());
       let drawOffsetX = 0;
       let drawOffsetY = 0;
       let replayContext;
@@ -229,12 +229,12 @@ class CanvasVectorLayerRenderer extends CanvasLayerRenderer {
     } else {
       const resolution = frameState.viewState.resolution;
       const rotation = frameState.viewState.rotation;
-      const layer = /** @type {module:ol/layer/Vector} */ (this.getLayer());
+      const layer = /** @type {import("../../layer/Vector.js").default} */ (this.getLayer());
       /** @type {!Object.<string, boolean>} */
       const features = {};
       const result = this.replayGroup_.forEachFeatureAtCoordinate(coordinate, resolution, rotation, hitTolerance, {},
         /**
-         * @param {module:ol/Feature|module:ol/render/Feature} feature Feature.
+         * @param {import("../../Feature.js").default|import("../../render/Feature.js").default} feature Feature.
          * @return {?} Callback result.
          */
         function(feature) {
@@ -249,7 +249,7 @@ class CanvasVectorLayerRenderer extends CanvasLayerRenderer {
   }
 
   /**
-   * @param {module:ol/events/Event} event Event.
+   * @param {import("../../events/Event.js").default} event Event.
    */
   handleFontsChanged_(event) {
     const layer = this.getLayer();
@@ -260,7 +260,7 @@ class CanvasVectorLayerRenderer extends CanvasLayerRenderer {
 
   /**
    * Handle changes in image style state.
-   * @param {module:ol/events/Event} event Image style change event.
+   * @param {import("../../events/Event.js").default} event Image style change event.
    * @private
    */
   handleStyleImageChange_(event) {
@@ -271,7 +271,7 @@ class CanvasVectorLayerRenderer extends CanvasLayerRenderer {
    * @inheritDoc
    */
   prepareFrame(frameState, layerState) {
-    const vectorLayer = /** @type {module:ol/layer/Vector} */ (this.getLayer());
+    const vectorLayer = /** @type {import("../../layer/Vector.js").default} */ (this.getLayer());
     const vectorSource = vectorLayer.getSource();
 
     const animating = frameState.viewHints[ViewHint.ANIMATING];
@@ -332,8 +332,8 @@ class CanvasVectorLayerRenderer extends CanvasLayerRenderer {
       pixelRatio, vectorSource.getOverlaps(), this.declutterTree_, vectorLayer.getRenderBuffer());
     vectorSource.loadFeatures(extent, resolution, projection);
     /**
-     * @param {module:ol/Feature} feature Feature.
-     * @this {module:ol/renderer/canvas/VectorLayer}
+     * @param {import("../../Feature.js").default} feature Feature.
+     * @this {import("./VectorLayer.js").default}
      */
     const render = function(feature) {
       let styles;
@@ -348,11 +348,11 @@ class CanvasVectorLayerRenderer extends CanvasLayerRenderer {
       }
     }.bind(this);
     if (vectorLayerRenderOrder) {
-      /** @type {Array.<module:ol/Feature>} */
+      /** @type {Array.<import("../../Feature.js").default>} */
       const features = [];
       vectorSource.forEachFeatureInExtent(extent,
         /**
-         * @param {module:ol/Feature} feature Feature.
+         * @param {import("../../Feature.js").default} feature Feature.
          */
         function(feature) {
           features.push(feature);
@@ -377,11 +377,11 @@ class CanvasVectorLayerRenderer extends CanvasLayerRenderer {
   }
 
   /**
-   * @param {module:ol/Feature} feature Feature.
+   * @param {import("../../Feature.js").default} feature Feature.
    * @param {number} resolution Resolution.
    * @param {number} pixelRatio Pixel ratio.
-   * @param {(module:ol/style/Style|Array.<module:ol/style/Style>)} styles The style or array of styles.
-   * @param {module:ol/render/canvas/ReplayGroup} replayGroup Replay group.
+   * @param {(import("../../style/Style.js").default|Array.<import("../../style/Style.js").default>)} styles The style or array of styles.
+   * @param {import("../../render/canvas/ReplayGroup.js").default} replayGroup Replay group.
    * @return {boolean} `true` if an image is loading.
    */
   renderFeature(feature, resolution, pixelRatio, styles, replayGroup) {
@@ -409,7 +409,7 @@ class CanvasVectorLayerRenderer extends CanvasLayerRenderer {
 
 /**
  * Determine if this renderer handles the provided layer.
- * @param {module:ol/layer/Layer} layer The candidate layer.
+ * @param {import("../../layer/Layer.js").default} layer The candidate layer.
  * @return {boolean} The renderer can render the layer.
  */
 CanvasVectorLayerRenderer['handles'] = function(layer) {
@@ -419,12 +419,12 @@ CanvasVectorLayerRenderer['handles'] = function(layer) {
 
 /**
  * Create a layer renderer.
- * @param {module:ol/renderer/Map} mapRenderer The map renderer.
- * @param {module:ol/layer/Layer} layer The layer to be rendererd.
- * @return {module:ol/renderer/canvas/VectorLayer} The layer renderer.
+ * @param {import("../Map.js").default} mapRenderer The map renderer.
+ * @param {import("../../layer/Layer.js").default} layer The layer to be rendererd.
+ * @return {import("./VectorLayer.js").default} The layer renderer.
  */
 CanvasVectorLayerRenderer['create'] = function(mapRenderer, layer) {
-  return new CanvasVectorLayerRenderer(/** @type {module:ol/layer/Vector} */ (layer));
+  return new CanvasVectorLayerRenderer(/** @type {import("../../layer/Vector.js").default} */ (layer));
 };
 
 

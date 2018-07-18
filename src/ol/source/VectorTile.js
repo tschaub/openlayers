@@ -12,22 +12,22 @@ import {createXYZ, extentFromProjection, createForProjection} from '../tilegrid.
 
 /**
  * @typedef {Object} Options
- * @property {module:ol/source/Source~AttributionLike} [attributions] Attributions.
+ * @property {import("./Source.js").AttributionLike} [attributions] Attributions.
  * @property {number} [cacheSize=128] Cache size.
- * @property {module:ol/format/Feature} [format] Feature format for tiles. Used and required by the default.
+ * @property {import("../format/Feature.js").default} [format] Feature format for tiles. Used and required by the default.
  * @property {boolean} [overlaps=true] This source may have overlapping geometries. Setting this
  * to `false` (e.g. for sources with polygons that represent administrative
  * boundaries or TopoJSON sources) allows the renderer to optimise fill and
  * stroke operations.
- * @property {module:ol/proj~ProjectionLike} projection Projection.
- * @property {module:ol/source/State} [state] Source state.
- * @property {module:ol/VectorTile~TileClass} [tileClass] Class used to instantiate image tiles.
+ * @property {import("../proj.js").ProjectionLike} projection Projection.
+ * @property {import("./State.js").default} [state] Source state.
+ * @property {import("../VectorTile.js").TileClass} [tileClass] Class used to instantiate image tiles.
  * Default is {@link module:ol/VectorTile}.
  * @property {number} [maxZoom=22] Optional max zoom level.
  * @property {number} [minZoom] Optional min zoom level.
- * @property {number|module:ol/size~Size} [tileSize=512] Optional tile size.
- * @property {module:ol/tilegrid/TileGrid} [tileGrid] Tile grid.
- * @property {module:ol/Tile~LoadFunction} [tileLoadFunction]
+ * @property {number|import("../size.js").Size} [tileSize=512] Optional tile size.
+ * @property {import("../tilegrid/TileGrid.js").default} [tileGrid] Tile grid.
+ * @property {import("../Tile.js").LoadFunction} [tileLoadFunction]
  * Optional function to load a tile given a URL. Could look like this:
  * ```js
  * function(tile, url) {
@@ -44,7 +44,7 @@ import {createXYZ, extentFromProjection, createForProjection} from '../tilegrid.
  *   };
  * });
  * ```
- * @property {module:ol/Tile~UrlFunction} [tileUrlFunction] Optional function to get tile URL given a tile coordinate and the projection.
+ * @property {import("../Tile.js").UrlFunction} [tileUrlFunction] Optional function to get tile URL given a tile coordinate and the projection.
  * @property {string} [url] URL template. Must include `{x}`, `{y}` or `{-y}`, and `{z}` placeholders.
  * A `{?-?}` template pattern, for example `subdomain{a-f}.domain.com`, may be
  * used instead of defining each one separately in the `urls` option.
@@ -70,8 +70,8 @@ class VectorTile extends UrlTile {
    * {@link module:ol/source/Vector} for vector sources that are suitable for feature
    * editing.
    *
-   * @fires module:ol/source/Tile~TileSourceEvent
-   * @param {module:ol/source/VectorTile~Options=} options Vector tile options.
+   * @fires import("./Tile.js").TileSourceEvent
+   * @param {Options=} options Vector tile options.
    * @api
    */
   constructor(options) {
@@ -104,13 +104,13 @@ class VectorTile extends UrlTile {
 
     /**
      * @private
-     * @type {module:ol/format/Feature}
+     * @type {import("../format/Feature.js").default}
      */
     this.format_ = options.format ? options.format : null;
 
     /**
        * @private
-       * @type {Object.<string, module:ol/VectorTile>}
+       * @type {Object.<string, import("../VectorTile.js").default>}
        */
     this.sourceTiles_ = {};
 
@@ -122,14 +122,14 @@ class VectorTile extends UrlTile {
 
     /**
        * @protected
-       * @type {function(new: module:ol/VectorTile, module:ol/tilecoord~TileCoord, module:ol/TileState, string,
-       *        module:ol/format/Feature, module:ol/Tile~LoadFunction)}
+       * @type {function(new: import("../VectorTile.js").default, import("../tilecoord.js").TileCoord, import("../TileState.js").default, string,
+       *        import("../format/Feature.js").default, import("../Tile.js").LoadFunction)}
        */
     this.tileClass = options.tileClass ? options.tileClass : Tile;
 
     /**
      * @private
-     * @type {Object.<string, module:ol/tilegrid/TileGrid>}
+     * @type {Object.<string, import("../tilegrid/TileGrid.js").default>}
      */
     this.tileGrids_ = {};
 
@@ -161,7 +161,7 @@ VectorTile.prototype.getTile = function(z, x, y, pixelRatio, projection) {
   const tileCoordKey = getKeyZXY(z, x, y);
   if (this.tileCache.containsKey(tileCoordKey)) {
     return (
-      /** @type {!module:ol/Tile} */ (this.tileCache.get(tileCoordKey))
+      /** @type {!import("../Tile.js").default} */ (this.tileCache.get(tileCoordKey))
     );
   } else {
     const tileCoord = [z, x, y];

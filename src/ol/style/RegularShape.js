@@ -13,7 +13,7 @@ import ImageStyle from '../style/Image.js';
 /**
  * Specify radius for regular polygons, or radius1 and radius2 for stars.
  * @typedef {Object} Options
- * @property {module:ol/style/Fill} [fill] Fill style.
+ * @property {import("./Fill.js").default} [fill] Fill style.
  * @property {number} points Number of points for stars and regular polygons. In case of a polygon, the number of points
  * is the number of sides.
  * @property {number} [radius] Radius of a regular polygon.
@@ -24,10 +24,10 @@ import ImageStyle from '../style/Image.js';
  * when drawing the shape in the output canvas. If `false` fractional numbers may be used. Using `true` allows for
  * "sharp" rendering (no blur), while using `false` allows for "accurate" rendering. Note that accuracy is important if
  * the shape's position is animated. Without it, the shape may jitter noticeably.
- * @property {module:ol/style/Stroke} [stroke] Stroke style.
+ * @property {import("./Stroke.js").default} [stroke] Stroke style.
  * @property {number} [rotation=0] Rotation in radians (positive rotation clockwise).
  * @property {boolean} [rotateWithView=false] Whether to rotate the shape with the view.
- * @property {module:ol/style/AtlasManager} [atlasManager] The atlas manager to use for this symbol. When
+ * @property {import("./AtlasManager.js").default} [atlasManager] The atlas manager to use for this symbol. When
  * using WebGL it is recommended to use an atlas manager to avoid texture switching. If an atlas manager is given, the
  * symbol is added to an atlas. By default no atlas manager is used.
  */
@@ -35,7 +35,7 @@ import ImageStyle from '../style/Image.js';
 
 /**
  * @typedef {Object} RenderOptions
- * @property {module:ol/colorlike~ColorLike} [strokeStyle]
+ * @property {import("../colorlike.js").ColorLike} [strokeStyle]
  * @property {number} strokeWidth
  * @property {number} size
  * @property {string} lineCap
@@ -53,7 +53,7 @@ class RegularShape extends ImageStyle {
    * a regular polygon when `radius` is provided, or a star when `radius1` and
    * `radius2` are provided.
    *
-   * @param {module:ol/style/RegularShape~Options} options Options.
+   * @param {Options} options Options.
    * @api
    */
   constructor(options) {
@@ -97,7 +97,7 @@ class RegularShape extends ImageStyle {
 
     /**
      * @private
-     * @type {module:ol/style/Fill}
+     * @type {import("./Fill.js").default}
      */
     this.fill_ = options.fill !== undefined ? options.fill : null;
 
@@ -134,7 +134,7 @@ class RegularShape extends ImageStyle {
 
     /**
      * @private
-     * @type {module:ol/style/Stroke}
+     * @type {import("./Stroke.js").default}
      */
     this.stroke_ = options.stroke !== undefined ? options.stroke : null;
 
@@ -146,25 +146,25 @@ class RegularShape extends ImageStyle {
 
     /**
      * @private
-     * @type {module:ol/size~Size}
+     * @type {import("../size.js").Size}
      */
     this.size_ = null;
 
     /**
      * @private
-     * @type {module:ol/size~Size}
+     * @type {import("../size.js").Size}
      */
     this.imageSize_ = null;
 
     /**
      * @private
-     * @type {module:ol/size~Size}
+     * @type {import("../size.js").Size}
      */
     this.hitDetectionImageSize_ = null;
 
     /**
      * @protected
-     * @type {module:ol/style/AtlasManager|undefined}
+     * @type {import("./AtlasManager.js").default|undefined}
      */
     this.atlasManager_ = options.atlasManager;
 
@@ -174,7 +174,7 @@ class RegularShape extends ImageStyle {
 
   /**
    * Clones the style. If an atlasmanager was provided to the original style it will be used in the cloned style, too.
-   * @return {module:ol/style/RegularShape} The cloned style.
+   * @return {import("./RegularShape.js").default} The cloned style.
    * @api
    */
   clone() {
@@ -214,7 +214,7 @@ class RegularShape extends ImageStyle {
 
   /**
    * Get the fill style for the shape.
-   * @return {module:ol/style/Fill} Fill style.
+   * @return {import("./Fill.js").default} Fill style.
    * @api
    */
   getFill() {
@@ -302,7 +302,7 @@ class RegularShape extends ImageStyle {
 
   /**
    * Get the stroke style for the shape.
-   * @return {module:ol/style/Stroke} Stroke style.
+   * @return {import("./Stroke.js").default} Stroke style.
    * @api
    */
   getStroke() {
@@ -326,7 +326,7 @@ class RegularShape extends ImageStyle {
 
   /**
    * @protected
-   * @param {module:ol/style/AtlasManager|undefined} atlasManager An atlas manager.
+   * @param {import("./AtlasManager.js").default|undefined} atlasManager An atlas manager.
    */
   render_(atlasManager) {
     let imageSize;
@@ -370,7 +370,7 @@ class RegularShape extends ImageStyle {
 
     let size = 2 * (this.radius_ + strokeWidth) + 1;
 
-    /** @type {module:ol/style/RegularShape~RenderOptions} */
+    /** @type {RenderOptions} */
     const renderOptions = {
       strokeStyle: strokeStyle,
       strokeWidth: strokeWidth,
@@ -432,7 +432,7 @@ class RegularShape extends ImageStyle {
 
   /**
    * @private
-   * @param {module:ol/style/RegularShape~RenderOptions} renderOptions Render options.
+   * @param {RenderOptions} renderOptions Render options.
    * @param {CanvasRenderingContext2D} context The rendering context.
    * @param {number} x The origin for the symbol (x).
    * @param {number} y The origin for the symbol (y).
@@ -492,7 +492,7 @@ class RegularShape extends ImageStyle {
 
   /**
    * @private
-   * @param {module:ol/style/RegularShape~RenderOptions} renderOptions Render options.
+   * @param {RenderOptions} renderOptions Render options.
    */
   createHitDetectionCanvas_(renderOptions) {
     this.hitDetectionImageSize_ = [renderOptions.size, renderOptions.size];
@@ -511,7 +511,7 @@ class RegularShape extends ImageStyle {
 
   /**
    * @private
-   * @param {module:ol/style/RegularShape~RenderOptions} renderOptions Render options.
+   * @param {RenderOptions} renderOptions Render options.
    * @param {CanvasRenderingContext2D} context The context.
    * @param {number} x The origin for the symbol (x).
    * @param {number} y The origin for the symbol (y).

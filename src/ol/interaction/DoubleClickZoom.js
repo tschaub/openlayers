@@ -19,7 +19,7 @@ import Interaction, {zoomByDelta} from '../interaction/Interaction.js';
 class DoubleClickZoom extends Interaction {
 
   /**
-   * @param {module:ol/interaction/DoubleClickZoom~Options=} opt_options Options.
+   * @param {Options=} opt_options Options.
    * @api
    */
   constructor(opt_options) {
@@ -49,9 +49,9 @@ class DoubleClickZoom extends Interaction {
 /**
  * Handles the {@link module:ol/MapBrowserEvent map browser event} (if it was a
  * doubleclick) and eventually zooms the map.
- * @param {module:ol/MapBrowserEvent} mapBrowserEvent Map browser event.
+ * @param {import("../MapBrowserEvent.js").default} mapBrowserEvent Map browser event.
  * @return {boolean} `false` to stop event propagation.
- * @this {module:ol/interaction/DoubleClickZoom}
+ * @this {import("./DoubleClickZoom.js").default}
  */
 function handleEvent(mapBrowserEvent) {
   let stopEvent = false;

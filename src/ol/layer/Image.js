@@ -9,7 +9,7 @@ import Layer from '../layer/Layer.js';
  * @typedef {Object} Options
  * @property {number} [opacity=1] Opacity (0, 1).
  * @property {boolean} [visible=true] Visibility.
- * @property {module:ol/extent~Extent} [extent] The bounding extent for layer rendering.  The layer will not be
+ * @property {import("../extent.js").Extent} [extent] The bounding extent for layer rendering.  The layer will not be
  * rendered outside of this extent.
  * @property {number} [zIndex=0] The z-index for layer rendering.  At rendering time, the layers
  * will be ordered, first by Z-index and then by position.
@@ -17,11 +17,11 @@ import Layer from '../layer/Layer.js';
  * visible.
  * @property {number} [maxResolution] The maximum resolution (exclusive) below which this layer will
  * be visible.
- * @property {module:ol/PluggableMap} [map] Sets the layer as overlay on a map. The map will not manage
+ * @property {import("../PluggableMap.js").default} [map] Sets the layer as overlay on a map. The map will not manage
  * this layer in its layers collection, and the layer will be rendered on top. This is useful for
  * temporary layers. The standard way to add a layer to a map and have it managed by the map is to
  * use {@link module:ol/Map#addLayer}.
- * @property {module:ol/source/Image} [source] Source for this layer.
+ * @property {import("../source/Image.js").default} [source] Source for this layer.
  */
 
 
@@ -35,8 +35,8 @@ class ImageLayer extends Layer {
    * property on the layer object; for example, setting `title: 'My Title'` in the
    * options means that `title` is observable, and has get/set accessors.
    *
-   * @fires module:ol/render/Event~RenderEvent
-   * @param {module:ol/layer/Image~Options=} opt_options Layer options.
+   * @fires import("../render/Event.js").RenderEvent
+   * @param {Options=} opt_options Layer options.
    * @api
    */
   constructor(opt_options) {
@@ -46,7 +46,7 @@ class ImageLayer extends Layer {
     /**
      * The layer type.
      * @protected
-     * @type {module:ol/LayerType}
+     * @type {import("../LayerType.js").default}
      */
     this.type = LayerType.IMAGE;
 
@@ -58,7 +58,7 @@ class ImageLayer extends Layer {
 /**
  * Return the associated {@link module:ol/source/Image source} of the image layer.
  * @function
- * @return {module:ol/source/Image} Source.
+ * @return {import("../source/Image.js").default} Source.
  * @api
  */
 ImageLayer.prototype.getSource;

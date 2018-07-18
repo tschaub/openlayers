@@ -13,8 +13,8 @@ import {apply as applyTransform} from '../../transform.js';
 class WebGLVectorLayerRenderer extends WebGLLayerRenderer {
 
   /**
-   * @param {module:ol/renderer/webgl/Map} mapRenderer Map renderer.
-   * @param {module:ol/layer/Vector} vectorLayer Vector layer.
+   * @param {import("./Map.js").default} mapRenderer Map renderer.
+   * @param {import("../../layer/Vector.js").default} vectorLayer Vector layer.
    * @api
    */
   constructor(mapRenderer, vectorLayer) {
@@ -41,26 +41,26 @@ class WebGLVectorLayerRenderer extends WebGLLayerRenderer {
 
     /**
      * @private
-     * @type {module:ol/extent~Extent}
+     * @type {import("../../extent.js").Extent}
      */
     this.renderedExtent_ = createEmpty();
 
     /**
      * @private
-     * @type {function(module:ol/Feature, module:ol/Feature): number|null}
+     * @type {function(import("../../Feature.js").default, import("../../Feature.js").default): number|null}
      */
     this.renderedRenderOrder_ = null;
 
     /**
      * @private
-     * @type {module:ol/render/webgl/ReplayGroup}
+     * @type {import("../../render/webgl/ReplayGroup.js").default}
      */
     this.replayGroup_ = null;
 
     /**
      * The last layer state.
      * @private
-     * @type {?module:ol/layer/Layer~State}
+     * @type {?import("../../layer/Layer.js").State}
      */
     this.layerState_ = null;
 
@@ -119,7 +119,7 @@ class WebGLVectorLayerRenderer extends WebGLLayerRenderer {
         frameState.size, frameState.pixelRatio, layerState.opacity,
         {},
         /**
-         * @param {module:ol/Feature|module:ol/render/Feature} feature Feature.
+         * @param {import("../../Feature.js").default|import("../../render/Feature.js").default} feature Feature.
          * @return {?} Callback result.
          */
         function(feature) {
@@ -166,7 +166,7 @@ class WebGLVectorLayerRenderer extends WebGLLayerRenderer {
 
   /**
    * Handle changes in image style state.
-   * @param {module:ol/events/Event} event Image style change event.
+   * @param {import("../../events/Event.js").default} event Image style change event.
    * @private
    */
   handleStyleImageChange_(event) {
@@ -177,7 +177,7 @@ class WebGLVectorLayerRenderer extends WebGLLayerRenderer {
    * @inheritDoc
    */
   prepareFrame(frameState, layerState, context) {
-    const vectorLayer = /** @type {module:ol/layer/Vector} */ (this.getLayer());
+    const vectorLayer = /** @type {import("../../layer/Vector.js").default} */ (this.getLayer());
     const vectorSource = vectorLayer.getSource();
 
     const animating = frameState.viewHints[ViewHint.ANIMATING];
@@ -226,8 +226,8 @@ class WebGLVectorLayerRenderer extends WebGLLayerRenderer {
       extent, vectorLayer.getRenderBuffer());
     vectorSource.loadFeatures(extent, resolution, projection);
     /**
-     * @param {module:ol/Feature} feature Feature.
-     * @this {module:ol/renderer/webgl/VectorLayer}
+     * @param {import("../../Feature.js").default} feature Feature.
+     * @this {import("./VectorLayer.js").default}
      */
     const render = function(feature) {
       let styles;
@@ -242,11 +242,11 @@ class WebGLVectorLayerRenderer extends WebGLLayerRenderer {
       }
     };
     if (vectorLayerRenderOrder) {
-      /** @type {Array.<module:ol/Feature>} */
+      /** @type {Array.<import("../../Feature.js").default>} */
       const features = [];
       vectorSource.forEachFeatureInExtent(extent,
         /**
-         * @param {module:ol/Feature} feature Feature.
+         * @param {import("../../Feature.js").default} feature Feature.
          */
         function(feature) {
           features.push(feature);
@@ -268,12 +268,12 @@ class WebGLVectorLayerRenderer extends WebGLLayerRenderer {
   }
 
   /**
-   * @param {module:ol/Feature} feature Feature.
+   * @param {import("../../Feature.js").default} feature Feature.
    * @param {number} resolution Resolution.
    * @param {number} pixelRatio Pixel ratio.
-   * @param {(module:ol/style/Style|Array.<module:ol/style/Style>)} styles The style or array of
+   * @param {(import("../../style/Style.js").default|Array.<import("../../style/Style.js").default>)} styles The style or array of
    *     styles.
-   * @param {module:ol/render/webgl/ReplayGroup} replayGroup Replay group.
+   * @param {import("../../render/webgl/ReplayGroup.js").default} replayGroup Replay group.
    * @return {boolean} `true` if an image is loading.
    */
   renderFeature(feature, resolution, pixelRatio, styles, replayGroup) {
@@ -301,7 +301,7 @@ class WebGLVectorLayerRenderer extends WebGLLayerRenderer {
 
 /**
  * Determine if this renderer handles the provided layer.
- * @param {module:ol/layer/Layer} layer The candidate layer.
+ * @param {import("../../layer/Layer.js").default} layer The candidate layer.
  * @return {boolean} The renderer can render the layer.
  */
 WebGLVectorLayerRenderer['handles'] = function(layer) {
@@ -311,14 +311,14 @@ WebGLVectorLayerRenderer['handles'] = function(layer) {
 
 /**
  * Create a layer renderer.
- * @param {module:ol/renderer/Map} mapRenderer The map renderer.
- * @param {module:ol/layer/Layer} layer The layer to be rendererd.
- * @return {module:ol/renderer/webgl/VectorLayer} The layer renderer.
+ * @param {import("../Map.js").default} mapRenderer The map renderer.
+ * @param {import("../../layer/Layer.js").default} layer The layer to be rendererd.
+ * @return {import("./VectorLayer.js").default} The layer renderer.
  */
 WebGLVectorLayerRenderer['create'] = function(mapRenderer, layer) {
   return new WebGLVectorLayerRenderer(
-    /** @type {module:ol/renderer/webgl/Map} */ (mapRenderer),
-    /** @type {module:ol/layer/Vector} */ (layer)
+    /** @type {import("./Map.js").default} */ (mapRenderer),
+    /** @type {import("../../layer/Vector.js").default} */ (layer)
   );
 };
 

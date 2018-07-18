@@ -21,26 +21,26 @@ import RBush from '../structs/RBush.js';
 /**
  * @typedef {Object} Result
  * @property {boolean} snapped
- * @property {module:ol/coordinate~Coordinate|null} vertex
+ * @property {import("../coordinate.js").Coordinate|null} vertex
  * @property {module:ol~Pixel|null} vertexPixel
  */
 
 
 /**
  * @typedef {Object} SegmentData
- * @property {module:ol/Feature} feature
- * @property {Array.<module:ol/coordinate~Coordinate>} segment
+ * @property {import("../Feature.js").default} feature
+ * @property {Array.<import("../coordinate.js").Coordinate>} segment
  */
 
 
 /**
  * @typedef {Object} Options
- * @property {module:ol/Collection.<module:ol/Feature>} [features] Snap to these features. Either this option or source should be provided.
+ * @property {import("../Collection.js").default.<import("../Feature.js").default>} [features] Snap to these features. Either this option or source should be provided.
  * @property {boolean} [edge=true] Snap to edges.
  * @property {boolean} [vertex=true] Snap to vertices.
  * @property {number} [pixelTolerance=10] Pixel tolerance for considering the pointer close enough to a segment or
  * vertex for snapping.
- * @property {module:ol/source/Vector} [source] Snap to features from this source. Either this option or features should be provided
+ * @property {import("../source/Vector.js").default} [source] Snap to features from this source. Either this option or features should be provided
  */
 
 
@@ -65,7 +65,7 @@ import RBush from '../structs/RBush.js';
  */
 class Snap extends PointerInteraction {
   /**
-   * @param {module:ol/interaction/Snap~Options=} opt_options Options.
+   * @param {Options=} opt_options Options.
    * @api
    */
   constructor(opt_options) {
@@ -80,7 +80,7 @@ class Snap extends PointerInteraction {
     const options = opt_options ? opt_options : {};
 
     /**
-     * @type {module:ol/source/Vector}
+     * @type {import("../source/Vector.js").default}
      * @private
      */
     this.source_ = options.source ? options.source : null;
@@ -98,19 +98,19 @@ class Snap extends PointerInteraction {
     this.edge_ = options.edge !== undefined ? options.edge : true;
 
     /**
-     * @type {module:ol/Collection.<module:ol/Feature>}
+     * @type {import("../Collection.js").default.<import("../Feature.js").default>}
      * @private
      */
     this.features_ = options.features ? options.features : null;
 
     /**
-     * @type {Array.<module:ol/events~EventsKey>}
+     * @type {Array.<import("../events.js").EventsKey>}
      * @private
      */
     this.featuresListenerKeys_ = [];
 
     /**
-     * @type {Object.<number, module:ol/events~EventsKey>}
+     * @type {Object.<number, import("../events.js").EventsKey>}
      * @private
      */
     this.featureChangeListenerKeys_ = {};
@@ -118,7 +118,7 @@ class Snap extends PointerInteraction {
     /**
      * Extents are preserved so indexed segment can be quickly removed
      * when its feature geometry changes
-     * @type {Object.<number, module:ol/extent~Extent>}
+     * @type {Object.<number, import("../extent.js").Extent>}
      * @private
      */
     this.indexedFeaturesExtents_ = {};
@@ -127,14 +127,14 @@ class Snap extends PointerInteraction {
      * If a feature geometry changes while a pointer drag|move event occurs, the
      * feature doesn't get updated right away.  It will be at the next 'pointerup'
      * event fired.
-     * @type {!Object.<number, module:ol/Feature>}
+     * @type {!Object.<number, import("../Feature.js").default>}
      * @private
      */
     this.pendingFeatures_ = {};
 
     /**
      * Used for distance sorting in sortByDistance_
-     * @type {module:ol/coordinate~Coordinate}
+     * @type {import("../coordinate.js").Coordinate}
      * @private
      */
     this.pixelCoordinate_ = null;
@@ -147,7 +147,7 @@ class Snap extends PointerInteraction {
       options.pixelTolerance : 10;
 
     /**
-     * @type {function(module:ol/interaction/Snap~SegmentData, module:ol/interaction/Snap~SegmentData): number}
+     * @type {function(SegmentData, SegmentData): number}
      * @private
      */
     this.sortByDistance_ = sortByDistance.bind(this);
@@ -155,7 +155,7 @@ class Snap extends PointerInteraction {
 
     /**
     * Segment RTree for each layer
-    * @type {module:ol/structs/RBush.<module:ol/interaction/Snap~SegmentData>}
+    * @type {import("../structs/RBush.js").default.<SegmentData>}
     * @private
     */
     this.rBush_ = new RBush();
@@ -164,7 +164,7 @@ class Snap extends PointerInteraction {
     /**
     * @const
     * @private
-    * @type {Object.<string, function(module:ol/Feature, module:ol/geom/Geometry)>}
+    * @type {Object.<string, function(import("../Feature.js").default, import("../geom/Geometry.js").default)>}
     */
     this.SEGMENT_WRITERS_ = {
       'Point': this.writePointGeometry_,
@@ -181,7 +181,7 @@ class Snap extends PointerInteraction {
 
   /**
    * Add a feature to the collection of features that we may snap to.
-   * @param {module:ol/Feature} feature Feature.
+   * @param {import("../Feature.js").default} feature Feature.
    * @param {boolean=} opt_listen Whether to listen to the feature change or not
    *     Defaults to `true`.
    * @api
@@ -207,7 +207,7 @@ class Snap extends PointerInteraction {
   }
 
   /**
-   * @param {module:ol/Feature} feature Feature.
+   * @param {import("../Feature.js").default} feature Feature.
    * @private
    */
   forEachFeatureAdd_(feature) {
@@ -215,7 +215,7 @@ class Snap extends PointerInteraction {
   }
 
   /**
-   * @param {module:ol/Feature} feature Feature.
+   * @param {import("../Feature.js").default} feature Feature.
    * @private
    */
   forEachFeatureRemove_(feature) {
@@ -223,7 +223,7 @@ class Snap extends PointerInteraction {
   }
 
   /**
-   * @return {module:ol/Collection.<module:ol/Feature>|Array.<module:ol/Feature>} Features.
+   * @return {import("../Collection.js").default.<import("../Feature.js").default>|Array.<import("../Feature.js").default>} Features.
    * @private
    */
   getFeatures_() {
@@ -234,12 +234,12 @@ class Snap extends PointerInteraction {
       features = this.source_.getFeatures();
     }
     return (
-      /** @type {!Array.<module:ol/Feature>|!module:ol/Collection.<module:ol/Feature>} */ (features)
+      /** @type {!Array.<import("../Feature.js").default>|!import("../Collection.js").default.<import("../Feature.js").default>} */ (features)
     );
   }
 
   /**
-   * @param {module:ol/source/Vector|module:ol/Collection~CollectionEvent} evt Event.
+   * @param {import("../source/Vector.js").default|import("../Collection.js").CollectionEvent} evt Event.
    * @private
    */
   handleFeatureAdd_(evt) {
@@ -249,11 +249,11 @@ class Snap extends PointerInteraction {
     } else if (evt instanceof CollectionEvent) {
       feature = evt.element;
     }
-    this.addFeature(/** @type {module:ol/Feature} */ (feature));
+    this.addFeature(/** @type {import("../Feature.js").default} */ (feature));
   }
 
   /**
-   * @param {module:ol/source/Vector|module:ol/Collection~CollectionEvent} evt Event.
+   * @param {import("../source/Vector.js").default|import("../Collection.js").CollectionEvent} evt Event.
    * @private
    */
   handleFeatureRemove_(evt) {
@@ -263,15 +263,15 @@ class Snap extends PointerInteraction {
     } else if (evt instanceof CollectionEvent) {
       feature = evt.element;
     }
-    this.removeFeature(/** @type {module:ol/Feature} */ (feature));
+    this.removeFeature(/** @type {import("../Feature.js").default} */ (feature));
   }
 
   /**
-   * @param {module:ol/events/Event} evt Event.
+   * @param {import("../events/Event.js").default} evt Event.
    * @private
    */
   handleFeatureChange_(evt) {
-    const feature = /** @type {module:ol/Feature} */ (evt.target);
+    const feature = /** @type {import("../Feature.js").default} */ (evt.target);
     if (this.handlingDownUpSequence) {
       const uid = getUid(feature);
       if (!(uid in this.pendingFeatures_)) {
@@ -284,7 +284,7 @@ class Snap extends PointerInteraction {
 
   /**
    * Remove a feature from the collection of features that we may snap to.
-   * @param {module:ol/Feature} feature Feature
+   * @param {import("../Feature.js").default} feature Feature
    * @param {boolean=} opt_unlisten Whether to unlisten to the feature change
    *     or not. Defaults to `true`.
    * @api
@@ -349,9 +349,9 @@ class Snap extends PointerInteraction {
 
   /**
    * @param {module:ol~Pixel} pixel Pixel
-   * @param {module:ol/coordinate~Coordinate} pixelCoordinate Coordinate
-   * @param {module:ol/PluggableMap} map Map.
-   * @return {module:ol/interaction/Snap~Result} Snap result
+   * @param {import("../coordinate.js").Coordinate} pixelCoordinate Coordinate
+   * @param {import("../PluggableMap.js").default} map Map.
+   * @return {Result} Snap result
    */
   snapTo(pixel, pixelCoordinate, map) {
 
@@ -397,7 +397,7 @@ class Snap extends PointerInteraction {
       } else if (this.edge_) {
         if (isCircle) {
           vertex = closestOnCircle(pixelCoordinate,
-            /** @type {module:ol/geom/Circle} */ (segments[0].feature.getGeometry()));
+            /** @type {import("../geom/Circle.js").default} */ (segments[0].feature.getGeometry()));
         } else {
           vertex = closestOnSegment(pixelCoordinate, closestSegment);
         }
@@ -423,7 +423,7 @@ class Snap extends PointerInteraction {
       }
     }
     return (
-      /** @type {module:ol/interaction/Snap~Result} */ ({
+      /** @type {Result} */ ({
         snapped: snapped,
         vertex: vertex,
         vertexPixel: vertexPixel
@@ -432,7 +432,7 @@ class Snap extends PointerInteraction {
   }
 
   /**
-   * @param {module:ol/Feature} feature Feature
+   * @param {import("../Feature.js").default} feature Feature
    * @private
    */
   updateFeature_(feature) {
@@ -441,8 +441,8 @@ class Snap extends PointerInteraction {
   }
 
   /**
-   * @param {module:ol/Feature} feature Feature
-   * @param {module:ol/geom/Circle} geometry Geometry.
+   * @param {import("../Feature.js").default} feature Feature
+   * @param {import("../geom/Circle.js").default} geometry Geometry.
    * @private
    */
   writeCircleGeometry_(feature, geometry) {
@@ -450,7 +450,7 @@ class Snap extends PointerInteraction {
     const coordinates = polygon.getCoordinates()[0];
     for (let i = 0, ii = coordinates.length - 1; i < ii; ++i) {
       const segment = coordinates.slice(i, i + 2);
-      const segmentData = /** @type {module:ol/interaction/Snap~SegmentData} */ ({
+      const segmentData = /** @type {SegmentData} */ ({
         feature: feature,
         segment: segment
       });
@@ -459,8 +459,8 @@ class Snap extends PointerInteraction {
   }
 
   /**
-   * @param {module:ol/Feature} feature Feature
-   * @param {module:ol/geom/GeometryCollection} geometry Geometry.
+   * @param {import("../Feature.js").default} feature Feature
+   * @param {import("../geom/GeometryCollection.js").default} geometry Geometry.
    * @private
    */
   writeGeometryCollectionGeometry_(feature, geometry) {
@@ -474,15 +474,15 @@ class Snap extends PointerInteraction {
   }
 
   /**
-   * @param {module:ol/Feature} feature Feature
-   * @param {module:ol/geom/LineString} geometry Geometry.
+   * @param {import("../Feature.js").default} feature Feature
+   * @param {import("../geom/LineString.js").default} geometry Geometry.
    * @private
    */
   writeLineStringGeometry_(feature, geometry) {
     const coordinates = geometry.getCoordinates();
     for (let i = 0, ii = coordinates.length - 1; i < ii; ++i) {
       const segment = coordinates.slice(i, i + 2);
-      const segmentData = /** @type {module:ol/interaction/Snap~SegmentData} */ ({
+      const segmentData = /** @type {SegmentData} */ ({
         feature: feature,
         segment: segment
       });
@@ -491,8 +491,8 @@ class Snap extends PointerInteraction {
   }
 
   /**
-   * @param {module:ol/Feature} feature Feature
-   * @param {module:ol/geom/MultiLineString} geometry Geometry.
+   * @param {import("../Feature.js").default} feature Feature
+   * @param {import("../geom/MultiLineString.js").default} geometry Geometry.
    * @private
    */
   writeMultiLineStringGeometry_(feature, geometry) {
@@ -501,7 +501,7 @@ class Snap extends PointerInteraction {
       const coordinates = lines[j];
       for (let i = 0, ii = coordinates.length - 1; i < ii; ++i) {
         const segment = coordinates.slice(i, i + 2);
-        const segmentData = /** @type {module:ol/interaction/Snap~SegmentData} */ ({
+        const segmentData = /** @type {SegmentData} */ ({
           feature: feature,
           segment: segment
         });
@@ -511,15 +511,15 @@ class Snap extends PointerInteraction {
   }
 
   /**
-   * @param {module:ol/Feature} feature Feature
-   * @param {module:ol/geom/MultiPoint} geometry Geometry.
+   * @param {import("../Feature.js").default} feature Feature
+   * @param {import("../geom/MultiPoint.js").default} geometry Geometry.
    * @private
    */
   writeMultiPointGeometry_(feature, geometry) {
     const points = geometry.getCoordinates();
     for (let i = 0, ii = points.length; i < ii; ++i) {
       const coordinates = points[i];
-      const segmentData = /** @type {module:ol/interaction/Snap~SegmentData} */ ({
+      const segmentData = /** @type {SegmentData} */ ({
         feature: feature,
         segment: [coordinates, coordinates]
       });
@@ -528,8 +528,8 @@ class Snap extends PointerInteraction {
   }
 
   /**
-   * @param {module:ol/Feature} feature Feature
-   * @param {module:ol/geom/MultiPolygon} geometry Geometry.
+   * @param {import("../Feature.js").default} feature Feature
+   * @param {import("../geom/MultiPolygon.js").default} geometry Geometry.
    * @private
    */
   writeMultiPolygonGeometry_(feature, geometry) {
@@ -540,7 +540,7 @@ class Snap extends PointerInteraction {
         const coordinates = rings[j];
         for (let i = 0, ii = coordinates.length - 1; i < ii; ++i) {
           const segment = coordinates.slice(i, i + 2);
-          const segmentData = /** @type {module:ol/interaction/Snap~SegmentData} */ ({
+          const segmentData = /** @type {SegmentData} */ ({
             feature: feature,
             segment: segment
           });
@@ -551,13 +551,13 @@ class Snap extends PointerInteraction {
   }
 
   /**
-   * @param {module:ol/Feature} feature Feature
-   * @param {module:ol/geom/Point} geometry Geometry.
+   * @param {import("../Feature.js").default} feature Feature
+   * @param {import("../geom/Point.js").default} geometry Geometry.
    * @private
    */
   writePointGeometry_(feature, geometry) {
     const coordinates = geometry.getCoordinates();
-    const segmentData = /** @type {module:ol/interaction/Snap~SegmentData} */ ({
+    const segmentData = /** @type {SegmentData} */ ({
       feature: feature,
       segment: [coordinates, coordinates]
     });
@@ -565,8 +565,8 @@ class Snap extends PointerInteraction {
   }
 
   /**
-   * @param {module:ol/Feature} feature Feature
-   * @param {module:ol/geom/Polygon} geometry Geometry.
+   * @param {import("../Feature.js").default} feature Feature
+   * @param {import("../geom/Polygon.js").default} geometry Geometry.
    * @private
    */
   writePolygonGeometry_(feature, geometry) {
@@ -575,7 +575,7 @@ class Snap extends PointerInteraction {
       const coordinates = rings[j];
       for (let i = 0, ii = coordinates.length - 1; i < ii; ++i) {
         const segment = coordinates.slice(i, i + 2);
-        const segmentData = /** @type {module:ol/interaction/Snap~SegmentData} */ ({
+        const segmentData = /** @type {SegmentData} */ ({
           feature: feature,
           segment: segment
         });
@@ -588,9 +588,9 @@ class Snap extends PointerInteraction {
 
 /**
  * Handle all pointer events events.
- * @param {module:ol/MapBrowserEvent} evt A move event.
+ * @param {import("../MapBrowserEvent.js").default} evt A move event.
  * @return {boolean} Pass the event to other interactions.
- * @this {module:ol/interaction/Snap}
+ * @this {import("./Snap.js").default}
  */
 export function handleEvent(evt) {
   const result = this.snapTo(evt.pixel, evt.coordinate, evt.map);
@@ -603,9 +603,9 @@ export function handleEvent(evt) {
 
 
 /**
- * @param {module:ol/MapBrowserPointerEvent} evt Event.
+ * @param {import("../MapBrowserPointerEvent.js").default} evt Event.
  * @return {boolean} Stop drag sequence?
- * @this {module:ol/interaction/Snap}
+ * @this {import("./Snap.js").default}
  */
 function handleUpEvent(evt) {
   const featuresToUpdate = getValues(this.pendingFeatures_);
@@ -619,10 +619,10 @@ function handleUpEvent(evt) {
 
 /**
  * Sort segments by distance, helper function
- * @param {module:ol/interaction/Snap~SegmentData} a The first segment data.
- * @param {module:ol/interaction/Snap~SegmentData} b The second segment data.
+ * @param {SegmentData} a The first segment data.
+ * @param {SegmentData} b The second segment data.
  * @return {number} The difference in distance.
- * @this {module:ol/interaction/Snap}
+ * @this {import("./Snap.js").default}
  */
 function sortByDistance(a, b) {
   const deltaA = squaredDistanceToSegment(this.pixelCoordinate_, a.segment);

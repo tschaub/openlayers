@@ -14,14 +14,14 @@ import {wrapX, getForProjection as getTileGridForProjection} from '../tilegrid.j
 
 /**
  * @typedef {Object} Options
- * @property {module:ol/source/Source~AttributionLike} [attributions]
+ * @property {import("./Source.js").AttributionLike} [attributions]
  * @property {number} [cacheSize]
- * @property {module:ol/extent~Extent} [extent]
+ * @property {import("../extent.js").Extent} [extent]
  * @property {boolean} [opaque]
  * @property {number} [tilePixelRatio]
- * @property {module:ol/proj~ProjectionLike} [projection]
- * @property {module:ol/source/State} [state]
- * @property {module:ol/tilegrid/TileGrid} [tileGrid]
+ * @property {import("../proj.js").ProjectionLike} [projection]
+ * @property {import("./State.js").default} [state]
+ * @property {import("../tilegrid/TileGrid.js").default} [tileGrid]
  * @property {boolean} [wrapX=true]
  * @property {number} [transition]
  */
@@ -34,7 +34,7 @@ class TileSource extends Source {
    * instantiated in apps.
    * Base class for sources providing images divided into a tile grid.
    *
-   * @param {module:ol/source/Tile~Options=} options SourceTile source options.
+   * @param {Options=} options SourceTile source options.
    * @api
    */
   constructor(options) {
@@ -62,19 +62,19 @@ class TileSource extends Source {
 
     /**
      * @protected
-     * @type {module:ol/tilegrid/TileGrid}
+     * @type {import("../tilegrid/TileGrid.js").default}
      */
     this.tileGrid = options.tileGrid !== undefined ? options.tileGrid : null;
 
     /**
      * @protected
-     * @type {module:ol/TileCache}
+     * @type {import("../TileCache.js").default}
      */
     this.tileCache = new TileCache(options.cacheSize);
 
     /**
      * @protected
-     * @type {module:ol/size~Size}
+     * @type {import("../size.js").Size}
      */
     this.tmpSize = [0, 0];
 
@@ -86,7 +86,7 @@ class TileSource extends Source {
 
     /**
      * @protected
-     * @type {module:ol/Tile~Options}
+     * @type {import("../Tile.js").Options}
      */
     this.tileOptions = {transition: options.transition};
 
@@ -100,8 +100,8 @@ class TileSource extends Source {
   }
 
   /**
-   * @param {module:ol/proj/Projection} projection Projection.
-   * @param {!Object.<string, module:ol/TileRange>} usedTiles Used tiles.
+   * @param {import("../proj/Projection.js").default} projection Projection.
+   * @param {!Object.<string, import("../TileRange.js").default>} usedTiles Used tiles.
    */
   expireCache(projection, usedTiles) {
     const tileCache = this.getTileCacheForProjection(projection);
@@ -111,10 +111,10 @@ class TileSource extends Source {
   }
 
   /**
-   * @param {module:ol/proj/Projection} projection Projection.
+   * @param {import("../proj/Projection.js").default} projection Projection.
    * @param {number} z Zoom level.
-   * @param {module:ol/TileRange} tileRange Tile range.
-   * @param {function(module:ol/Tile):(boolean|undefined)} callback Called with each
+   * @param {import("../TileRange.js").default} tileRange Tile range.
+   * @param {function(import("../Tile.js").default):(boolean|undefined)} callback Called with each
    *     loaded tile.  If the callback returns `false`, the tile will not be
    *     considered loaded.
    * @return {boolean} The tile range is fully covered with loaded tiles.
@@ -132,7 +132,7 @@ class TileSource extends Source {
         tileCoordKey = getKeyZXY(z, x, y);
         loaded = false;
         if (tileCache.containsKey(tileCoordKey)) {
-          tile = /** @type {!module:ol/Tile} */ (tileCache.get(tileCoordKey));
+          tile = /** @type {!import("../Tile.js").default} */ (tileCache.get(tileCoordKey));
           loaded = tile.getState() === TileState.LOADED;
           if (loaded) {
             loaded = (callback(tile) !== false);
@@ -147,7 +147,7 @@ class TileSource extends Source {
   }
 
   /**
-   * @param {module:ol/proj/Projection} projection Projection.
+   * @param {import("../proj/Projection.js").default} projection Projection.
    * @return {number} Gutter.
    */
   getGutter(projection) {
@@ -176,7 +176,7 @@ class TileSource extends Source {
   }
 
   /**
-   * @param {module:ol/proj/Projection} projection Projection.
+   * @param {import("../proj/Projection.js").default} projection Projection.
    * @return {boolean} Opaque.
    */
   getOpaque(projection) {
@@ -196,14 +196,14 @@ class TileSource extends Source {
    * @param {number} x Tile coordinate x.
    * @param {number} y Tile coordinate y.
    * @param {number} pixelRatio Pixel ratio.
-   * @param {module:ol/proj/Projection} projection Projection.
-   * @return {!module:ol/Tile} Tile.
+   * @param {import("../proj/Projection.js").default} projection Projection.
+   * @return {!import("../Tile.js").default} Tile.
    */
   getTile(z, x, y, pixelRatio, projection) {}
 
   /**
    * Return the tile grid of the tile source.
-   * @return {module:ol/tilegrid/TileGrid} Tile grid.
+   * @return {import("../tilegrid/TileGrid.js").default} Tile grid.
    * @api
    */
   getTileGrid() {
@@ -211,8 +211,8 @@ class TileSource extends Source {
   }
 
   /**
-   * @param {module:ol/proj/Projection} projection Projection.
-   * @return {!module:ol/tilegrid/TileGrid} Tile grid.
+   * @param {import("../proj/Projection.js").default} projection Projection.
+   * @return {!import("../tilegrid/TileGrid.js").default} Tile grid.
    */
   getTileGridForProjection(projection) {
     if (!this.tileGrid) {
@@ -223,8 +223,8 @@ class TileSource extends Source {
   }
 
   /**
-   * @param {module:ol/proj/Projection} projection Projection.
-   * @return {module:ol/TileCache} Tile cache.
+   * @param {import("../proj/Projection.js").default} projection Projection.
+   * @return {import("../TileCache.js").default} Tile cache.
    * @protected
    */
   getTileCacheForProjection(projection) {
@@ -250,8 +250,8 @@ class TileSource extends Source {
   /**
    * @param {number} z Z.
    * @param {number} pixelRatio Pixel ratio.
-   * @param {module:ol/proj/Projection} projection Projection.
-   * @return {module:ol/size~Size} Tile size.
+   * @param {import("../proj/Projection.js").default} projection Projection.
+   * @return {import("../size.js").Size} Tile size.
    */
   getTilePixelSize(z, pixelRatio, projection) {
     const tileGrid = this.getTileGridForProjection(projection);
@@ -268,9 +268,9 @@ class TileSource extends Source {
    * Returns a tile coordinate wrapped around the x-axis. When the tile coordinate
    * is outside the resolution and extent range of the tile grid, `null` will be
    * returned.
-   * @param {module:ol/tilecoord~TileCoord} tileCoord Tile coordinate.
-   * @param {module:ol/proj/Projection=} opt_projection Projection.
-   * @return {module:ol/tilecoord~TileCoord} Tile coordinate to be passed to the tileUrlFunction or
+   * @param {import("../tilecoord.js").TileCoord} tileCoord Tile coordinate.
+   * @param {import("../proj/Projection.js").default=} opt_projection Projection.
+   * @return {import("../tilecoord.js").TileCoord} Tile coordinate to be passed to the tileUrlFunction or
    *     null if no tile URL should be created for the passed `tileCoord`.
    */
   getTileCoordForTileUrlFunction(tileCoord, opt_projection) {
@@ -298,7 +298,7 @@ class TileSource extends Source {
  * @param {number} z Tile coordinate z.
  * @param {number} x Tile coordinate x.
  * @param {number} y Tile coordinate y.
- * @param {module:ol/proj/Projection} projection Projection.
+ * @param {import("../proj/Projection.js").default} projection Projection.
  */
 TileSource.prototype.useTile = UNDEFINED;
 
@@ -309,7 +309,7 @@ TileSource.prototype.useTile = UNDEFINED;
  * type.
  *
  * @param {string} type Type.
- * @param {module:ol/Tile} tile The tile.
+ * @param {import("../Tile.js").default} tile The tile.
  */
 export class TileSourceEvent extends Event {
 
@@ -319,7 +319,7 @@ export class TileSourceEvent extends Event {
 
     /**
      * The tile related to the event.
-     * @type {module:ol/Tile}
+     * @type {import("../Tile.js").default}
      * @api
      */
     this.tile = tile;

@@ -10,7 +10,7 @@ import Filter from '../filter/Filter.js';
 class Not extends Filter {
 
   /**
-   * @param {!module:ol/format/filter/Filter} condition Filter condition.
+   * @param {!import("./Filter.js").default} condition Filter condition.
    * @api
    */
   constructor(condition) {
@@ -18,7 +18,7 @@ class Not extends Filter {
     super('Not');
 
     /**
-     * @type {!module:ol/format/filter/Filter}
+     * @type {!import("./Filter.js").default}
      */
     this.condition = condition;
 

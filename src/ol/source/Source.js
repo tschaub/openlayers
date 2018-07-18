@@ -12,7 +12,7 @@ import SourceState from '../source/State.js';
  * A function that returns a string or an array of strings representing source
  * attributions.
  *
- * @typedef {function(module:ol/PluggableMap~FrameState): (string|Array.<string>)} Attribution
+ * @typedef {function(import("../PluggableMap.js").FrameState): (string|Array.<string>)} Attribution
  */
 
 
@@ -24,15 +24,15 @@ import SourceState from '../source/State.js';
  * * an array of simple strings (e.g. `['© Acme Inc.', '© Bacme Inc.']`)
  * * a function that returns a string or array of strings (`{@link module:ol/source/Source~Attribution}`)
  *
- * @typedef {string|Array.<string>|module:ol/source/Source~Attribution} AttributionLike
+ * @typedef {string|Array.<string>|Attribution} AttributionLike
  */
 
 
 /**
  * @typedef {Object} Options
- * @property {module:ol/source/Source~AttributionLike} [attributions]
- * @property {module:ol/proj~ProjectionLike} projection
- * @property {module:ol/source/State} [state]
+ * @property {AttributionLike} [attributions]
+ * @property {import("../proj.js").ProjectionLike} projection
+ * @property {import("./State.js").default} [state]
  * @property {boolean} [wrapX]
  */
 
@@ -46,7 +46,7 @@ class Source extends BaseObject {
    *
    * A generic `change` event is triggered when the state of the source changes.
    *
-   * @param {module:ol/source/Source~Options} options Source options.
+   * @param {Options} options Source options.
    * @api
    */
   constructor(options) {
@@ -55,19 +55,19 @@ class Source extends BaseObject {
 
     /**
     * @private
-    * @type {module:ol/proj/Projection}
+    * @type {import("../proj/Projection.js").default}
     */
     this.projection_ = getProjection(options.projection);
 
     /**
     * @private
-    * @type {?module:ol/source/Source~Attribution}
+    * @type {?Attribution}
     */
     this.attributions_ = this.adaptAttributions_(options.attributions);
 
     /**
     * @private
-    * @type {module:ol/source/State}
+    * @type {import("./State.js").default}
     */
     this.state_ = options.state !== undefined ?
       options.state : SourceState.READY;
@@ -82,8 +82,8 @@ class Source extends BaseObject {
 
   /**
   * Turns the attributions option into an attributions function.
-  * @param {module:ol/source/Source~AttributionLike|undefined} attributionLike The attribution option.
-  * @return {?module:ol/source/Source~Attribution} An attribution function (or null).
+  * @param {AttributionLike|undefined} attributionLike The attribution option.
+  * @return {?Attribution} An attribution function (or null).
   */
   adaptAttributions_(attributionLike) {
     if (!attributionLike) {
@@ -106,7 +106,7 @@ class Source extends BaseObject {
 
   /**
   * Get the attribution function for the source.
-  * @return {?module:ol/source/Source~Attribution} Attribution function.
+  * @return {?Attribution} Attribution function.
   */
   getAttributions() {
     return this.attributions_;
@@ -114,7 +114,7 @@ class Source extends BaseObject {
 
   /**
   * Get the projection of the source.
-  * @return {module:ol/proj/Projection} Projection.
+  * @return {import("../proj/Projection.js").default} Projection.
   * @api
   */
   getProjection() {
@@ -129,7 +129,7 @@ class Source extends BaseObject {
 
   /**
   * Get the state of the source, see {@link module:ol/source/State~State} for possible states.
-  * @return {module:ol/source/State} State.
+  * @return {import("./State.js").default} State.
   * @api
   */
   getState() {
@@ -153,7 +153,7 @@ class Source extends BaseObject {
 
   /**
   * Set the attributions of the source.
-  * @param {module:ol/source/Source~AttributionLike|undefined} attributions Attributions.
+  * @param {AttributionLike|undefined} attributions Attributions.
   *     Can be passed as `string`, `Array<string>`, `{@link module:ol/source/Source~Attribution}`,
   *     or `undefined`.
   * @api
@@ -165,7 +165,7 @@ class Source extends BaseObject {
 
   /**
   * Set the state of the source.
-  * @param {module:ol/source/State} state State.
+  * @param {import("./State.js").default} state State.
   * @protected
   */
   setState(state) {
@@ -175,12 +175,12 @@ class Source extends BaseObject {
 }
 
 /**
- * @param {module:ol/coordinate~Coordinate} coordinate Coordinate.
+ * @param {import("../coordinate.js").Coordinate} coordinate Coordinate.
  * @param {number} resolution Resolution.
  * @param {number} rotation Rotation.
  * @param {number} hitTolerance Hit tolerance in pixels.
  * @param {Object.<string, boolean>} skippedFeatureUids Skipped feature uids.
- * @param {function((module:ol/Feature|module:ol/render/Feature)): T} callback Feature callback.
+ * @param {function((import("../Feature.js").default|import("../render/Feature.js").default)): T} callback Feature callback.
  * @return {T|undefined} Callback result.
  * @template T
  */

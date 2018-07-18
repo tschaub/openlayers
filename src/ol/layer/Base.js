@@ -11,7 +11,7 @@ import {assign} from '../obj.js';
  * @typedef {Object} Options
  * @property {number} [opacity=1] Opacity (0, 1).
  * @property {boolean} [visible=true] Visibility.
- * @property {module:ol/extent~Extent} [extent] The bounding extent for layer rendering.  The layer will not be
+ * @property {import("../extent.js").Extent} [extent] The bounding extent for layer rendering.  The layer will not be
  * rendered outside of this extent.
  * @property {number} [zIndex=0] The z-index for layer rendering.  At rendering time, the layers
  * will be ordered, first by Z-index and then by position.
@@ -31,7 +31,7 @@ class BaseLayer extends BaseObject {
    * the options is set as a {@link module:ol/Object} property on the layer object, so
    * is observable, and has get/set accessors.
    *
-   * @param {module:ol/layer/Base~Options} options Layer options.
+   * @param {Options} options Layer options.
    * @api
    */
   constructor(options) {
@@ -56,17 +56,17 @@ class BaseLayer extends BaseObject {
     this.setProperties(properties);
 
     /**
-    * @type {module:ol/layer/Layer~State}
+    * @type {import("./Layer.js").State}
     * @private
     */
-    this.state_ = /** @type {module:ol/layer/Layer~State} */ ({
-      layer: /** @type {module:ol/layer/Layer} */ (this),
+    this.state_ = /** @type {import("./Layer.js").State} */ ({
+      layer: /** @type {import("./Layer.js").default} */ (this),
       managed: true
     });
 
     /**
     * The layer type.
-    * @type {module:ol/LayerType}
+    * @type {import("../LayerType.js").default}
     * @protected;
     */
     this.type;
@@ -75,14 +75,14 @@ class BaseLayer extends BaseObject {
 
   /**
   * Get the layer type (used when creating a layer renderer).
-  * @return {module:ol/LayerType} The layer type.
+  * @return {import("../LayerType.js").default} The layer type.
   */
   getType() {
     return this.type;
   }
 
   /**
-  * @return {module:ol/layer/Layer~State} Layer state.
+  * @return {import("./Layer.js").State} Layer state.
   */
   getLayerState() {
     this.state_.opacity = clamp(this.getOpacity(), 0, 1);
@@ -98,30 +98,30 @@ class BaseLayer extends BaseObject {
 
   /**
   * @abstract
-  * @param {Array.<module:ol/layer/Layer>=} opt_array Array of layers (to be
+  * @param {Array.<import("./Layer.js").default>=} opt_array Array of layers (to be
   *     modified in place).
-  * @return {Array.<module:ol/layer/Layer>} Array of layers.
+  * @return {Array.<import("./Layer.js").default>} Array of layers.
   */
   getLayersArray(opt_array) {}
 
   /**
   * @abstract
-  * @param {Array.<module:ol/layer/Layer~State>=} opt_states Optional list of layer
+  * @param {Array.<import("./Layer.js").State>=} opt_states Optional list of layer
   *     states (to be modified in place).
-  * @return {Array.<module:ol/layer/Layer~State>} List of layer states.
+  * @return {Array.<import("./Layer.js").State>} List of layer states.
   */
   getLayerStatesArray(opt_states) {}
 
   /**
   * Return the {@link module:ol/extent~Extent extent} of the layer or `undefined` if it
   * will be visible regardless of extent.
-  * @return {module:ol/extent~Extent|undefined} The layer extent.
+  * @return {import("../extent.js").Extent|undefined} The layer extent.
   * @observable
   * @api
   */
   getExtent() {
     return (
-    /** @type {module:ol/extent~Extent|undefined} */ (this.get(LayerProperty.EXTENT))
+    /** @type {import("../extent.js").Extent|undefined} */ (this.get(LayerProperty.EXTENT))
     );
   }
 
@@ -157,7 +157,7 @@ class BaseLayer extends BaseObject {
 
   /**
   * @abstract
-  * @return {module:ol/source/State} Source state.
+  * @return {import("../source/State.js").default} Source state.
   */
   getSourceState() {}
 
@@ -185,7 +185,7 @@ class BaseLayer extends BaseObject {
   /**
   * Set the extent at which the layer is visible.  If `undefined`, the layer
   * will be visible at all extents.
-  * @param {module:ol/extent~Extent|undefined} extent The extent of the layer.
+  * @param {import("../extent.js").Extent|undefined} extent The extent of the layer.
   * @observable
   * @api
   */

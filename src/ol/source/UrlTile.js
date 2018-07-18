@@ -10,16 +10,16 @@ import {getKeyZXY} from '../tilecoord.js';
 
 /**
  * @typedef {Object} Options
- * @property {module:ol/source/Source~AttributionLike} [attributions]
+ * @property {import("./Source.js").AttributionLike} [attributions]
  * @property {number} [cacheSize]
- * @property {module:ol/extent~Extent} [extent]
+ * @property {import("../extent.js").Extent} [extent]
  * @property {boolean} [opaque]
- * @property {module:ol/proj~ProjectionLike} [projection]
- * @property {module:ol/source/State} [state]
- * @property {module:ol/tilegrid/TileGrid} [tileGrid]
- * @property {module:ol/Tile~LoadFunction} tileLoadFunction
+ * @property {import("../proj.js").ProjectionLike} [projection]
+ * @property {import("./State.js").default} [state]
+ * @property {import("../tilegrid/TileGrid.js").default} [tileGrid]
+ * @property {import("../Tile.js").LoadFunction} tileLoadFunction
  * @property {number} [tilePixelRatio]
- * @property {module:ol/Tile~UrlFunction} [tileUrlFunction]
+ * @property {import("../Tile.js").UrlFunction} [tileUrlFunction]
  * @property {string} [url]
  * @property {Array.<string>} [urls]
  * @property {boolean} [wrapX=true]
@@ -32,8 +32,8 @@ class UrlTile extends TileSource {
    * @classdesc
    * Base class for sources providing tiles divided into a tile grid over http.
    *
-   * @fires module:ol/source/TileEvent
-   * @param {module:ol/source/UrlTile~Options=} options Image tile options.
+   * @fires import("./TileEvent.js").default
+   * @param {Options=} options Image tile options.
    */
   constructor(options) {
 
@@ -52,13 +52,13 @@ class UrlTile extends TileSource {
 
     /**
      * @protected
-     * @type {module:ol/Tile~LoadFunction}
+     * @type {import("../Tile.js").LoadFunction}
      */
     this.tileLoadFunction = options.tileLoadFunction;
 
     /**
      * @protected
-     * @type {module:ol/Tile~UrlFunction}
+     * @type {import("../Tile.js").UrlFunction}
      */
     this.tileUrlFunction = this.fixedTileUrlFunction ?
       this.fixedTileUrlFunction.bind(this) : nullTileUrlFunction;
@@ -88,7 +88,7 @@ class UrlTile extends TileSource {
 
   /**
    * Return the tile load function of the source.
-   * @return {module:ol/Tile~LoadFunction} TileLoadFunction
+   * @return {import("../Tile.js").LoadFunction} TileLoadFunction
    * @api
    */
   getTileLoadFunction() {
@@ -97,7 +97,7 @@ class UrlTile extends TileSource {
 
   /**
    * Return the tile URL function of the source.
-   * @return {module:ol/Tile~UrlFunction} TileUrlFunction
+   * @return {import("../Tile.js").UrlFunction} TileUrlFunction
    * @api
    */
   getTileUrlFunction() {
@@ -117,11 +117,11 @@ class UrlTile extends TileSource {
 
   /**
    * Handle tile change events.
-   * @param {module:ol/events/Event} event Event.
+   * @param {import("../events/Event.js").default} event Event.
    * @protected
    */
   handleTileChange(event) {
-    const tile = /** @type {module:ol/Tile} */ (event.target);
+    const tile = /** @type {import("../Tile.js").default} */ (event.target);
     const uid = getUid(tile);
     const tileState = tile.getState();
     let type;
@@ -141,7 +141,7 @@ class UrlTile extends TileSource {
 
   /**
    * Set the tile load function of the source.
-   * @param {module:ol/Tile~LoadFunction} tileLoadFunction Tile load function.
+   * @param {import("../Tile.js").LoadFunction} tileLoadFunction Tile load function.
    * @api
    */
   setTileLoadFunction(tileLoadFunction) {
@@ -152,7 +152,7 @@ class UrlTile extends TileSource {
 
   /**
    * Set the tile URL function of the source.
-   * @param {module:ol/Tile~UrlFunction} tileUrlFunction Tile URL function.
+   * @param {import("../Tile.js").UrlFunction} tileUrlFunction Tile URL function.
    * @param {string=} opt_key Optional new tile key for the source.
    * @api
    */
@@ -204,7 +204,7 @@ class UrlTile extends TileSource {
 
 
 /**
- * @type {module:ol/Tile~UrlFunction|undefined}
+ * @type {import("../Tile.js").UrlFunction|undefined}
  * @protected
  */
 UrlTile.prototype.fixedTileUrlFunction;

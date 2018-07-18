@@ -16,7 +16,7 @@ import SourceState from '../source/State.js';
  * @typedef {Object} Options
  * @property {number} [opacity=1] Opacity (0, 1).
  * @property {boolean} [visible=true] Visibility.
- * @property {module:ol/extent~Extent} [extent] The bounding extent for layer rendering.  The layer will not be
+ * @property {import("../extent.js").Extent} [extent] The bounding extent for layer rendering.  The layer will not be
  * rendered outside of this extent.
  * @property {number} [zIndex=0] The z-index for layer rendering.  At rendering time, the layers
  * will be ordered, first by Z-index and then by position.
@@ -24,7 +24,7 @@ import SourceState from '../source/State.js';
  * visible.
  * @property {number} [maxResolution] The maximum resolution (exclusive) below which this layer will
  * be visible.
- * @property {module:ol/source/Source} [source] Source for this layer.  If not provided to the constructor,
+ * @property {import("../source/Source.js").default} [source] Source for this layer.  If not provided to the constructor,
  * the source can be set by calling {@link module:ol/layer/Layer#setSource layer.setSource(source)} after
  * construction.
  */
@@ -32,12 +32,12 @@ import SourceState from '../source/State.js';
 
 /**
  * @typedef {Object} State
- * @property {module:ol/layer/Layer} layer
+ * @property {import("./Layer.js").default} layer
  * @property {number} opacity
- * @property {module:ol/source/Source~State} sourceState
+ * @property {import("../source/Source.js").State} sourceState
  * @property {boolean} visible
  * @property {boolean} managed
- * @property {module:ol/extent~Extent} [extent]
+ * @property {import("../extent.js").Extent} [extent]
  * @property {number} zIndex
  * @property {number} maxResolution
  * @property {number} minResolution
@@ -60,8 +60,8 @@ class Layer extends BaseLayer {
    *
    * A generic `change` event is fired when the state of the source changes.
    *
-   * @fires module:ol/render/Event~RenderEvent
-   * @param {module:ol/layer/Layer~Options} options Layer options.
+   * @fires import("../render/Event.js").RenderEvent
+   * @param {Options} options Layer options.
    * @api
    */
   constructor(options) {
@@ -73,19 +73,19 @@ class Layer extends BaseLayer {
 
     /**
      * @private
-     * @type {?module:ol/events~EventsKey}
+     * @type {?import("../events.js").EventsKey}
      */
     this.mapPrecomposeKey_ = null;
 
     /**
      * @private
-     * @type {?module:ol/events~EventsKey}
+     * @type {?import("../events.js").EventsKey}
      */
     this.mapRenderKey_ = null;
 
     /**
      * @private
-     * @type {?module:ol/events~EventsKey}
+     * @type {?import("../events.js").EventsKey}
      */
     this.sourceChangeKey_ = null;
 
@@ -121,14 +121,14 @@ class Layer extends BaseLayer {
 
   /**
    * Get the layer source.
-   * @return {module:ol/source/Source} The layer source (or `null` if not yet set).
+   * @return {import("../source/Source.js").default} The layer source (or `null` if not yet set).
    * @observable
    * @api
    */
   getSource() {
     const source = this.get(LayerProperty.SOURCE);
     return (
-      /** @type {module:ol/source/Source} */ (source) || null
+      /** @type {import("../source/Source.js").default} */ (source) || null
     );
   }
 
@@ -172,7 +172,7 @@ class Layer extends BaseLayer {
    *
    * To add the layer to a map and have it managed by the map, use
    * {@link module:ol/Map#addLayer} instead.
-   * @param {module:ol/PluggableMap} map Map.
+   * @param {import("../PluggableMap.js").default} map Map.
    * @api
    */
   setMap(map) {
@@ -202,7 +202,7 @@ class Layer extends BaseLayer {
 
   /**
    * Set the layer source.
-   * @param {module:ol/source/Source} source The layer source.
+   * @param {import("../source/Source.js").default} source The layer source.
    * @observable
    * @api
    */
@@ -216,7 +216,7 @@ class Layer extends BaseLayer {
  * Return `true` if the layer is visible, and if the passed resolution is
  * between the layer's minResolution and maxResolution. The comparison is
  * inclusive for `minResolution` and exclusive for `maxResolution`.
- * @param {module:ol/layer/Layer~State} layerState Layer state.
+ * @param {State} layerState Layer state.
  * @param {number} resolution Resolution.
  * @return {boolean} The layer is visible at the given resolution.
  */

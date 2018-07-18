@@ -14,10 +14,10 @@ import VectorSource from '../source/Vector.js';
 
 /**
  * @typedef {Object} Options
- * @property {module:ol/source/Source~AttributionLike} [attributions] Attributions.
+ * @property {import("./Source.js").AttributionLike} [attributions] Attributions.
  * @property {number} [distance=20] Minimum distance in pixels between clusters.
- * @property {module:ol/extent~Extent} [extent] Extent.
- * @property {function(module:ol/Feature):module:ol/geom/Point} [geometryFunction]
+ * @property {import("../extent.js").Extent} [extent] Extent.
+ * @property {function(import("../Feature.js").default):import("../geom/Point.js").default} [geometryFunction]
  * Function that takes an {@link module:ol/Feature} as argument and returns an
  * {@link module:ol/geom/Point} as cluster calculation point for the feature. When a
  * feature should not be considered for clustering, the function should return
@@ -30,8 +30,8 @@ import VectorSource from '../source/Vector.js';
  * ```
  * See {@link module:ol/geom/Polygon~Polygon#getInteriorPoint} for a way to get a cluster
  * calculation point for polygons.
- * @property {module:ol/proj~ProjectionLike} projection Projection.
- * @property {module:ol/source/Vector} source Source.
+ * @property {import("../proj.js").ProjectionLike} projection Projection.
+ * @property {import("./Vector.js").default} source Source.
  * @property {boolean} [wrapX=true] Whether to wrap the world horizontally.
  */
 
@@ -43,7 +43,7 @@ class Cluster extends VectorSource {
    * geometries. For other geometry types, or if not all geometries should be
    * considered for clustering, a custom `geometryFunction` can be defined.
    *
-   * @param {module:ol/source/Cluster~Options=} options Cluster options.
+   * @param {Options=} options Cluster options.
    * @api
    */
   constructor(options) {
@@ -67,25 +67,25 @@ class Cluster extends VectorSource {
     this.distance = options.distance !== undefined ? options.distance : 20;
 
     /**
-     * @type {Array.<module:ol/Feature>}
+     * @type {Array.<import("../Feature.js").default>}
      * @protected
      */
     this.features = [];
 
     /**
-     * @param {module:ol/Feature} feature Feature.
-     * @return {module:ol/geom/Point} Cluster calculation point.
+     * @param {import("../Feature.js").default} feature Feature.
+     * @return {import("../geom/Point.js").default} Cluster calculation point.
      * @protected
      */
     this.geometryFunction = options.geometryFunction || function(feature) {
-      const geometry = /** @type {module:ol/geom/Point} */ (feature.getGeometry());
+      const geometry = /** @type {import("../geom/Point.js").default} */ (feature.getGeometry());
       assert(geometry instanceof Point,
-        10); // The default `geometryFunction` can only handle `module:ol/geom/Point~Point` geometries
+        10); // The default `geometryFunction` can only handle `import("../geom/Point.js").Point` geometries
       return geometry;
     };
 
     /**
-     * @type {module:ol/source/Vector}
+     * @type {import("./Vector.js").default}
      * @protected
      */
     this.source = options.source;
@@ -104,7 +104,7 @@ class Cluster extends VectorSource {
 
   /**
    * Get a reference to the wrapped source.
-   * @return {module:ol/source/Vector} Source.
+   * @return {import("./Vector.js").default} Source.
    * @api
    */
   getSource() {
@@ -188,8 +188,8 @@ class Cluster extends VectorSource {
   }
 
   /**
-   * @param {Array.<module:ol/Feature>} features Features
-   * @return {module:ol/Feature} The cluster feature.
+   * @param {Array.<import("../Feature.js").default>} features Features
+   * @return {import("../Feature.js").default} The cluster feature.
    * @protected
    */
   createCluster(features) {

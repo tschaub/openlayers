@@ -5,8 +5,8 @@
 
 /**
  * @typedef {Object} Item
- * @property {module:ol/structs/LinkedList~Item} [prev]
- * @property {module:ol/structs/LinkedList~Item} [next]
+ * @property {Item} [prev]
+ * @property {Item} [next]
  * @property {?} data
  */
 
@@ -23,19 +23,19 @@ class LinkedList {
 
     /**
      * @private
-     * @type {module:ol/structs/LinkedList~Item|undefined}
+     * @type {Item|undefined}
      */
     this.first_;
 
     /**
      * @private
-     * @type {module:ol/structs/LinkedList~Item|undefined}
+     * @type {Item|undefined}
      */
     this.last_;
 
     /**
      * @private
-     * @type {module:ol/structs/LinkedList~Item|undefined}
+     * @type {Item|undefined}
      */
     this.head_;
 
@@ -60,7 +60,7 @@ class LinkedList {
    */
   insertItem(data) {
 
-    /** @type {module:ol/structs/LinkedList~Item} */
+    /** @type {Item} */
     const item = {
       prev: undefined,
       next: undefined,
@@ -226,7 +226,7 @@ class LinkedList {
 
   /**
    * Concatenates two lists.
-   * @param {module:ol/structs/LinkedList} list List to merge into the current list.
+   * @param {import("./LinkedList.js").default} list List to merge into the current list.
    */
   concat(list) {
     if (list.head_) {

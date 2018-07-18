@@ -13,7 +13,7 @@ class RenderBox extends Disposable {
     super();
 
     /**
-     * @type {module:ol/geom/Polygon}
+     * @type {import("../geom/Polygon.js").default}
      * @private
      */
     this.geometry_ = null;
@@ -28,7 +28,7 @@ class RenderBox extends Disposable {
 
     /**
      * @private
-     * @type {module:ol/PluggableMap}
+     * @type {import("../PluggableMap.js").default}
      */
     this.map_ = null;
 
@@ -68,7 +68,7 @@ class RenderBox extends Disposable {
   }
 
   /**
-   * @param {module:ol/PluggableMap} map Map.
+   * @param {import("../PluggableMap.js").default} map Map.
    */
   setMap(map) {
     if (this.map_) {
@@ -116,7 +116,7 @@ class RenderBox extends Disposable {
   }
 
   /**
-   * @return {module:ol/geom/Polygon} Geometry.
+   * @return {import("../geom/Polygon.js").default} Geometry.
    */
   getGeometry() {
     return this.geometry_;

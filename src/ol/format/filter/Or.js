@@ -10,7 +10,7 @@ import LogicalNary from '../filter/LogicalNary.js';
 class Or extends LogicalNary {
 
   /**
-   * @param {...module:ol/format/filter/Filter} conditions Conditions.
+   * @param {...import("./Filter.js").default} conditions Conditions.
    * @api
    */
   constructor(conditions) {

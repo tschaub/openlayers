@@ -6,7 +6,7 @@ import {getUid} from '../util.js';
 
 /**
  * @typedef {Object} Options
- * @property {module:ol/color~Color|module:ol/colorlike~ColorLike} [color] A color, gradient or pattern.
+ * @property {import("../color.js").Color|import("../colorlike.js").ColorLike} [color] A color, gradient or pattern.
  * See {@link module:ol/color~Color} and {@link module:ol/colorlike~ColorLike} for possible formats.
  * Default null; if null, the Canvas/renderer default black will be used.
  * @property {string} [lineCap='round'] Line cap style: `butt`, `round`, or `square`.
@@ -30,7 +30,7 @@ import {getUid} from '../util.js';
 class Stroke {
 
   /**
-   * @param {module:ol/style/Stroke~Options=} opt_options Options.
+   * @param {Options=} opt_options Options.
    * @api
    */
   constructor(opt_options) {
@@ -39,7 +39,7 @@ class Stroke {
 
     /**
      * @private
-     * @type {module:ol/color~Color|module:ol/colorlike~ColorLike}
+     * @type {import("../color.js").Color|import("../colorlike.js").ColorLike}
      */
     this.color_ = options.color !== undefined ? options.color : null;
 
@@ -88,7 +88,7 @@ class Stroke {
 
   /**
    * Clones the style.
-   * @return {module:ol/style/Stroke} The cloned style.
+   * @return {import("./Stroke.js").default} The cloned style.
    * @api
    */
   clone() {
@@ -106,7 +106,7 @@ class Stroke {
 
   /**
    * Get the stroke color.
-   * @return {module:ol/color~Color|module:ol/colorlike~ColorLike} Color.
+   * @return {import("../color.js").Color|import("../colorlike.js").ColorLike} Color.
    * @api
    */
   getColor() {
@@ -170,7 +170,7 @@ class Stroke {
   /**
    * Set the color.
    *
-   * @param {module:ol/color~Color|module:ol/colorlike~ColorLike} color Color.
+   * @param {import("../color.js").Color|import("../colorlike.js").ColorLike} color Color.
    * @api
    */
   setColor(color) {

@@ -18,10 +18,10 @@ import {createXYZ, extentFromProjection} from '../tilegrid.js';
 
 
 /**
- * @param {module:ol/tilecoord~TileCoord} tileCoord Tile coordinate.
- * @param {module:ol/TileState} state State.
+ * @param {import("../tilecoord.js").TileCoord} tileCoord Tile coordinate.
+ * @param {import("../TileState.js").default} state State.
  * @param {string} src Image source URI.
- * @param {module:ol/extent~Extent} extent Extent of the tile.
+ * @param {import("../extent.js").Extent} extent Extent of the tile.
  * @param {boolean} preemptive Load the tile when visible (before it's needed).
  * @param {boolean} jsonp Load the tile as a script.
  */
@@ -39,7 +39,7 @@ export class CustomTile extends Tile {
 
     /**
      * @private
-     * @type {module:ol/extent~Extent}
+     * @type {import("../extent.js").Extent}
      */
     this.extent_ = extent;
 
@@ -90,7 +90,7 @@ CustomTile.prototype.getImage = function() {
 
 /**
  * Synchronously returns data at given coordinate (if available).
- * @param {module:ol/coordinate~Coordinate} coordinate Coordinate.
+ * @param {import("../coordinate.js").Coordinate} coordinate Coordinate.
  * @return {*} The data.
  */
 CustomTile.prototype.getData = function(coordinate) {
@@ -133,7 +133,7 @@ CustomTile.prototype.getData = function(coordinate) {
 /**
  * Calls the callback (synchronously by default) with the available data
  * for given coordinate (or `null` if not yet loaded).
- * @param {module:ol/coordinate~Coordinate} coordinate Coordinate.
+ * @param {import("../coordinate.js").Coordinate} coordinate Coordinate.
  * @param {function(this: T, *)} callback Callback.
  * @param {T=} opt_this The object to use as `this` in the callback.
  * @param {boolean=} opt_request If `true` the callback is always async.
@@ -273,7 +273,7 @@ class UTFGrid extends TileSource {
    * @classdesc
    * Layer source for UTFGrid interaction data loaded from TileJSON format.
    *
-   * @param {module:ol/source/UTFGrid~Options=} options Source options.
+   * @param {Options=} options Source options.
    * @api
    */
   constructor(options) {
@@ -291,7 +291,7 @@ class UTFGrid extends TileSource {
 
     /**
      * @private
-     * @type {!module:ol/Tile~UrlFunction}
+     * @type {!import("../Tile.js").UrlFunction}
      */
     this.tileUrlFunction_ = nullTileUrlFunction;
 
@@ -374,7 +374,7 @@ UTFGrid.prototype.getTemplate = function() {
  * Calls the callback (synchronously by default) with the available data
  * for given coordinate and resolution (or `null` if not yet loaded or
  * in case of an error).
- * @param {module:ol/coordinate~Coordinate} coordinate Coordinate.
+ * @param {import("../coordinate.js").Coordinate} coordinate Coordinate.
  * @param {number} resolution Resolution.
  * @param {function(*)} callback Callback.
  * @param {boolean=} opt_request If `true` the callback is always async.
@@ -386,7 +386,7 @@ UTFGrid.prototype.forDataAtCoordinateAndResolution = function(
   if (this.tileGrid) {
     const tileCoord = this.tileGrid.getTileCoordForCoordAndResolution(
       coordinate, resolution);
-    const tile = /** @type {!module:ol/source/UTFGrid~CustomTile} */(this.getTile(
+    const tile = /** @type {!CustomTile} */(this.getTile(
       tileCoord[0], tileCoord[1], tileCoord[2], 1, this.getProjection()));
     tile.forDataAtCoordinate(coordinate, callback, null, opt_request);
   } else {
@@ -469,7 +469,7 @@ UTFGrid.prototype.getTile = function(z, x, y, pixelRatio, projection) {
   const tileCoordKey = getKeyZXY(z, x, y);
   if (this.tileCache.containsKey(tileCoordKey)) {
     return (
-      /** @type {!module:ol/Tile} */ (this.tileCache.get(tileCoordKey))
+      /** @type {!import("../Tile.js").default} */ (this.tileCache.get(tileCoordKey))
     );
   } else {
     const tileCoord = [z, x, y];
