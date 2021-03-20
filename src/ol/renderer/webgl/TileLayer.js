@@ -30,7 +30,7 @@ import {numberSafeCompareFunction} from '../../array.js';
 import {toSize} from '../../size.js';
 
 export const Uniforms = {
-  TILE_TEXTURE: 'u_tileTexture',
+  TILE_TEXTURE_PREFIX: 'u_tileTexture',
   TILE_TRANSFORM: 'u_tileTransform',
   TRANSITION_ALPHA: 'u_transitionAlpha',
   DEPTH: 'u_depth',
@@ -340,6 +340,9 @@ class WebGLTileLayerRenderer extends WebGLLayerRenderer {
       const tileTextures = tileTexturesByZ[tileZ];
       for (let i = 0, ii = tileTextures.length; i < ii; ++i) {
         const tileTexture = tileTextures[i];
+        if (!tileTexture.loaded) {
+          continue;
+        }
         const tile = tileTexture.tile;
         const tileCoord = tile.tileCoord;
         const tileCoordKey = getTileCoordKey(tileCoord);
@@ -367,9 +370,17 @@ class WebGLTileLayerRenderer extends WebGLLayerRenderer {
         this.helper.bindBuffer(this.indices_);
         this.helper.enableAttributes(attributeDescriptions);
 
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, tileTexture.texture);
-        gl.uniform1i(this.helper.getUniformLocation(Uniforms.TILE_TEXTURE), 0);
+        for (
+          let textureIndex = 0;
+          textureIndex < tileTexture.textures.length;
+          ++textureIndex
+        ) {
+          const textureProperty = 'TEXTURE' + textureIndex;
+          const uniformName = Uniforms.TILE_TEXTURE_PREFIX + textureIndex;
+          gl.activeTexture(gl[textureProperty]);
+          gl.bindTexture(gl.TEXTURE_2D, tileTexture.textures[textureIndex]);
+          gl.uniform1i(this.helper.getUniformLocation(uniformName), 0);
+        }
 
         const alpha =
           tileCoordKey in alphaLookup ? alphaLookup[tileCoordKey] : 1;

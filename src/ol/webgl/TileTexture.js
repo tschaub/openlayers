@@ -2,7 +2,6 @@
  * @module ol/webgl/TileTexture
  */
 
-import DataTile from '../DataTile.js';
 import EventTarget from '../events/Target.js';
 import EventType from '../events/EventType.js';
 import ImageTile from '../ImageTile.js';
@@ -32,18 +31,21 @@ function uploadImageTexture(gl, texture, image) {
 /**
  * @param {WebGLRenderingContext} gl The WebGL context.
  * @param {WebGLTexture} texture The texture.
- * @param {import("../size.js").Size} size The pixel size.
  * @param {import("../DataTile.js").Data} data The pixel data.
+ * @param {import("../size.js").Size} size The pixel size.
+ * @param {number} bandCount The band count.
  */
-function uploadDataTexture(gl, texture, size, data) {
+function uploadDataTexture(gl, texture, data, size, bandCount) {
   bindAndConfigure(gl, texture);
 
   let format;
-
-  const bytesPerPixel = data.byteLength / (size[0] * size[1]);
-  switch (bytesPerPixel) {
+  switch (bandCount) {
     case 1: {
       format = gl.LUMINANCE;
+      break;
+    }
+    case 2: {
+      format = gl.LUMINANCE_ALPHA;
       break;
     }
     case 3: {
@@ -55,9 +57,7 @@ function uploadDataTexture(gl, texture, size, data) {
       break;
     }
     default: {
-      throw new Error(
-        `Unsupported number of bytes per pixel: ${bytesPerPixel}`
-      );
+      throw new Error(`Unsupported number of bands: ${bandCount}`);
     }
   }
 
@@ -74,30 +74,20 @@ function uploadDataTexture(gl, texture, size, data) {
   );
 }
 
-const blank = new Uint8Array([0, 0, 0, 0]);
-
-function uploadBlankTexture(gl, texture) {
-  gl.bindTexture(gl.TEXTURE_2D, texture);
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-    gl.RGBA,
-    1,
-    1,
-    0,
-    gl.RGBA,
-    gl.UNSIGNED_BYTE,
-    blank
-  );
-}
-
 class TileTexture extends EventTarget {
+  /**
+   * @param {import("../DataTile.js").default|import("../ImageTile.js").default} tile The tile.
+   * @param {import("../tilegrid/TileGrid.js").default} grid Tile grid.
+   * @param {import("../webgl/Helper.js").default} helper WebGL helper.
+   */
   constructor(tile, grid, helper) {
     super();
 
     this.tile = tile;
     this.size = toSize(grid.getTileSize(tile.tileCoord[0]));
     this.loaded = tile.getState() === TileState.LOADED;
+
+    this.bandCount = NaN;
 
     this.helper_ = helper;
     this.handleTileChange_ = this.handleTileChange_.bind(this);
@@ -116,34 +106,72 @@ class TileTexture extends EventTarget {
     helper.flushBufferData(coords);
     this.coords = coords;
 
-    const gl = helper.getGL();
-    const texture = gl.createTexture();
-    this.texture = texture;
+    /**
+     * @type {Array<WebGLTexture>}
+     */
+    this.textures = [];
 
     if (this.loaded) {
       this.uploadTile_();
     } else {
-      uploadBlankTexture(gl, texture);
       tile.addEventListener(EventType.CHANGE, this.handleTileChange_);
     }
   }
 
   uploadTile_() {
     const gl = this.helper_.getGL();
-    const texture = this.texture;
     const tile = this.tile;
 
     if (tile instanceof ImageTile) {
+      const texture = gl.createTexture();
+      this.textures.push(texture);
+      this.bandCount = 4;
       uploadImageTexture(gl, texture, tile.getImage());
       return;
     }
 
-    if (tile instanceof DataTile) {
-      uploadDataTexture(gl, texture, this.size, tile.getData());
+    const data = tile.getData();
+    const pixelCount = this.size[0] * this.size[1];
+    this.bandCount = data.byteLength / pixelCount;
+    const textureCount = Math.ceil(this.bandCount / 4);
+
+    if (textureCount === 1) {
+      const texture = gl.createTexture();
+      this.textures.push(texture);
+      uploadDataTexture(gl, texture, data, this.size, this.bandCount);
       return;
     }
 
-    throw new Error('Unsupported tile type');
+    const textureDataArrays = new Array(textureCount);
+    for (let textureIndex = 0; textureIndex < textureCount; ++textureIndex) {
+      const texture = gl.createTexture();
+      this.textures.push(texture);
+
+      const bandCount =
+        textureIndex < textureCount - 1 ? 4 : this.bandCount % 4;
+      textureDataArrays[textureIndex] = new Uint8Array(pixelCount * bandCount);
+    }
+
+    const valueCount = pixelCount * this.bandCount;
+    for (let dataIndex = 0; dataIndex < valueCount; ++dataIndex) {
+      const bandIndex = dataIndex % this.bandCount;
+      const textureBandIndex = bandIndex % 4;
+      const textureIndex = Math.floor(bandIndex / 4);
+      const bandCount =
+        textureIndex < textureCount - 1 ? 4 : this.bandCount % 4;
+      const pixelIndex = Math.floor(dataIndex / this.bandCount);
+      textureDataArrays[textureIndex][
+        pixelIndex * bandCount + textureBandIndex
+      ] = data[dataIndex];
+    }
+
+    for (let textureIndex = 0; textureIndex < textureCount; ++textureIndex) {
+      const bandCount =
+        textureIndex < textureCount - 1 ? 4 : this.bandCount % 4;
+      const texture = this.textures[textureIndex];
+      const data = textureDataArrays[textureIndex];
+      uploadDataTexture(gl, texture, data, this.size, bandCount);
+    }
   }
 
   handleTileChange_() {
@@ -157,7 +185,9 @@ class TileTexture extends EventTarget {
   disposeInternal() {
     const gl = this.helper_.getGL();
     this.helper_.deleteBuffer(this.coords);
-    gl.deleteTexture(this.texture);
+    for (let i = 0; i < this.textures.length; ++i) {
+      gl.deleteTexture(this.textures[i]);
+    }
     this.tile.removeEventListener(EventType.CHANGE, this.handleTileChange_);
   }
 }

@@ -69,9 +69,10 @@ import {assign} from '../obj.js';
 
 /**
  * @param {Style} style The layer style.
+ * @param {number} samplesPerPixel The number of bands.
  * @return {ParsedStyle} Shaders and uniforms generated from the style.
  */
-function parseStyle(style) {
+function parseStyle(style, samplesPerPixel) {
   const vertexShader = `
     attribute vec2 ${Attributes.TEXTURE_COORD};
     uniform mat4 ${Uniforms.TILE_TRANSFORM};
@@ -93,6 +94,7 @@ function parseStyle(style) {
     variables: [],
     attributes: [],
     stringLiteralsMap: {},
+    samplesPerPixel: samplesPerPixel,
   };
 
   const pipeline = [];
@@ -189,12 +191,14 @@ function parseStyle(style) {
     return `uniform float ${name};`;
   });
 
-  if (pipeline.length > 0) {
-    pipeline.unshift(`
-      if (color.a == 0.0) {
-        discard;
-      }
-    `);
+  const textureCount = Math.ceil(samplesPerPixel / 4);
+  const colorAssignments = new Array(textureCount);
+  for (let textureIndex = 0; textureIndex < textureCount; ++textureIndex) {
+    const uniformName = Uniforms.TILE_TEXTURE_PREFIX + textureIndex;
+    uniformDeclarations.push(`uniform sampler2D ${uniformName};`);
+    colorAssignments[
+      textureIndex
+    ] = `vec4 color${textureIndex} = texture2D(${uniformName}, v_textureCoord);`;
   }
 
   const fragmentShader = `
@@ -205,13 +209,14 @@ function parseStyle(style) {
     #endif
 
     varying vec2 v_textureCoord;
-    uniform sampler2D ${Uniforms.TILE_TEXTURE};
     uniform float ${Uniforms.TRANSITION_ALPHA};
 
     ${uniformDeclarations.join('\n')}
 
     void main() {
-      vec4 color = texture2D(${Uniforms.TILE_TEXTURE}, v_textureCoord);
+      ${colorAssignments.join('\n')}
+
+      vec4 color = color0;
 
       ${pipeline.join('\n')}
 
@@ -250,7 +255,7 @@ class WebGLTileLayer extends BaseTileLayer {
     delete options.style;
     super(options);
 
-    const parsedStyle = parseStyle(style || {});
+    const parsedStyle = parseStyle(style || {}, 1); // TODO: get texture count from source
 
     this.vertexShader_ = parsedStyle.vertexShader;
     this.fragmentShader_ = parsedStyle.fragmentShader;

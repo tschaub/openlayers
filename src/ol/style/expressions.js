@@ -170,6 +170,7 @@ export function isTypeUnique(valueType) {
  * @property {Array<string>} variables List of variables used in the expression; contains **unprefixed names**
  * @property {Array<string>} attributes List of attributes used in the expression; contains **unprefixed names**
  * @property {Object<string, number>} stringLiteralsMap This object maps all encountered string values to a number
+ * @property {number} [bandCount] Number of bands per pixel.
  */
 
 /**
@@ -408,23 +409,18 @@ Operators['band'] = {
   },
   toGlsl: function (context, args) {
     assertArgsCount(args, 1);
-    switch (args[0]) {
-      case 1: {
-        return 'color.r';
-      }
-      case 2: {
-        return 'color.g';
-      }
-      case 3: {
-        return 'color.b';
-      }
-      case 4: {
-        return 'color.a';
-      }
-      default: {
-        throw new Error('Band index must be 1, 2, 3, or 4');
-      }
+    const band = args[0];
+    if (typeof band !== 'number') {
+      throw new Error('Band index must be a number');
     }
+    const zeroBasedBand = band - 1;
+    const colorIndex = Math.floor(zeroBasedBand / 4);
+    let bandIndex = zeroBasedBand % 4;
+    if (band === context.bandCount && bandIndex === 1) {
+      // LUMINANCE_ALPHA - band 1 assigned to rgb and band 2 assigned to a
+      bandIndex = 3;
+    }
+    return `color${colorIndex}[${bandIndex}]`;
   },
 };
 
