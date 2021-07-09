@@ -2,6 +2,16 @@
 
 ### Next version
 
+#### Deprecation of `undefinedHTML` option for the MousePosition control
+
+The `undefinedHTML` option for the MousePosition control has been deprecated and will be removed in a future release.  Use the new `placeholder` option instead.
+
+#### New `placeholder` option for the MousePosition control
+
+When the mouse position is not available, the control renders a non-breaking space.  To render somthing else instead,
+set the `placeholder` option.  If you want to retain the last position when the mouse leaves the viewport, set
+`placeholder: false`.  This will be the default behavior in a future release.
+
 #### Deprecation of `image` render mode for vector tile layers
 
 `renderMode: 'image'` for vector tile layers has been deprecated. Applications continue to work, but a warning will be issued to the console. To get rid of the warning, simply remove the `renderMode` option.
