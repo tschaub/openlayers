@@ -516,7 +516,7 @@ Operators['band'] = {
       }
 
       context.functions[GET_BAND_VALUE_FUNC] = `
-        float getBandValue(float band, float xOffset, float yOffset) {
+        float ${GET_BAND_VALUE_FUNC}(float band, float xOffset, float yOffset) {
           float dx = xOffset / ${Uniforms.TEXTURE_PIXEL_WIDTH};
           float dy = yOffset / ${Uniforms.TEXTURE_PIXEL_HEIGHT};
           ${ifBlocks}
@@ -528,6 +528,72 @@ Operators['band'] = {
     const xOffsetExpression = expressionToGlsl(context, args[1] || 0);
     const yOffsetExpression = expressionToGlsl(context, args[2] || 0);
     return `${GET_BAND_VALUE_FUNC}(${bandExpression}, ${xOffsetExpression}, ${yOffsetExpression})`;
+  },
+};
+
+const GET_BAND_MIN_FUNC = 'getBandMin';
+
+Operators['band-min'] = {
+  getReturnType: function (args) {
+    return ValueTypes.NUMBER;
+  },
+  toGlsl: function (context, args) {
+    assertArgsCount(args, 1);
+    const band = args[0];
+
+    if (!(GET_BAND_MIN_FUNC in context.functions)) {
+      let ifBlocks = '';
+      const bandCount = context.bandCount || 1;
+      for (let i = 0; i < bandCount; i++) {
+        ifBlocks += `
+          if (band == ${i + 1}.0) {
+            return ${Uniforms.BAND_MIN_ARRAY}[${i}];
+          }
+        `;
+      }
+
+      context.functions[GET_BAND_MIN_FUNC] = `
+        float ${GET_BAND_MIN_FUNC}(float band) {
+          ${ifBlocks}
+        }
+      `;
+    }
+
+    const bandExpression = expressionToGlsl(context, band);
+    return `${GET_BAND_MIN_FUNC}(${bandExpression})`;
+  },
+};
+
+const GET_BAND_MAX_FUNC = 'getBandMax';
+
+Operators['band-max'] = {
+  getReturnType: function (args) {
+    return ValueTypes.NUMBER;
+  },
+  toGlsl: function (context, args) {
+    assertArgsCount(args, 1);
+    const band = args[0];
+
+    if (!(GET_BAND_MAX_FUNC in context.functions)) {
+      let ifBlocks = '';
+      const bandCount = context.bandCount || 1;
+      for (let i = 0; i < bandCount; i++) {
+        ifBlocks += `
+          if (band == ${i + 1}.0) {
+            return ${Uniforms.BAND_MAX_ARRAY}[${i}];
+          }
+        `;
+      }
+
+      context.functions[GET_BAND_MAX_FUNC] = `
+        float ${GET_BAND_MAX_FUNC}(float band) {
+          ${ifBlocks}
+        }
+      `;
+    }
+
+    const bandExpression = expressionToGlsl(context, band);
+    return `${GET_BAND_MAX_FUNC}(${bandExpression})`;
   },
 };
 

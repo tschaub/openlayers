@@ -934,6 +934,15 @@ class WebGLHelper extends Disposable {
   }
 
   /**
+   * Set a uniform float array.
+   * @param {string} uniform Uniform name
+   * @param {Float32Array} value The array of values.
+   */
+  setUniformFloatArray(uniform, value) {
+    this.getGL().uniform1fv(this.getUniformLocation(uniform), value);
+  }
+
+  /**
    * Give a value for a vec2 uniform
    * @param {string} uniform Uniform name
    * @param {Array<number>} value Array of length 4.

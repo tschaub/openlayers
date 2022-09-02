@@ -26,6 +26,12 @@ import {toSize} from '../size.js';
  */
 
 /**
+ * @typedef {Object} BandStats
+ * @property {number} [min] The band minimum.
+ * @property {number} [max] The band maximum.
+ */
+
+/**
  * @typedef {Object} Options
  * @property {Loader} [loader] Data loader.  Called with z, x, and y tile coordinates.
  * Returns {@link import("../DataTile.js").Data data} for a tile or a promise for the same.
@@ -136,6 +142,12 @@ class DataTileSource extends TileSource {
      * @type {!Object<string, import("../TileCache.js").default>}
      */
     this.tileCacheForProjection_ = {};
+
+    /**
+     * @private
+     * @type {Array<BandStats>|null}
+     */
+    this.stats_ = null;
   }
 
   /**
@@ -177,6 +189,36 @@ class DataTileSource extends TileSource {
     }
 
     return 0;
+  }
+
+  /**
+   * @return {Array<BandStats>|null} The band stats (if any).
+   */
+  getStats() {
+    return this.stats_;
+  }
+
+  /**
+   * @protected
+   * @param {number} bandIndex The band index.
+   * @param {number} value The pixel value.
+   */
+  updateStats(bandIndex, value) {
+    let stats = this.stats_;
+    if (!stats) {
+      stats = new Array(this.bandCount);
+      for (let i = 0; i < this.bandCount; ++i) {
+        stats[i] = {min: Infinity, max: -Infinity};
+      }
+      this.stats_ = stats;
+    }
+    const bandStats = stats[bandIndex];
+    if (value < bandStats.min) {
+      bandStats.min = value;
+    }
+    if (value > bandStats.max) {
+      bandStats.max = value;
+    }
   }
 
   /**

@@ -1,6 +1,7 @@
 /**
  * @module ol/renderer/webgl/TileLayer
  */
+import DataTile from '../../source/DataTile.js';
 import LRUCache from '../../structs/LRUCache.js';
 import ReprojDataTile from '../../reproj/DataTile.js';
 import ReprojTile from '../../reproj/Tile.js';
@@ -40,6 +41,8 @@ import {toSize} from '../../size.js';
 
 export const Uniforms = {
   TILE_TEXTURE_ARRAY: 'u_tileTextures',
+  BAND_MIN_ARRAY: 'u_bandMin',
+  BAND_MAX_ARRAY: 'u_bandMax',
   TILE_TRANSFORM: 'u_tileTransform',
   TRANSITION_ALPHA: 'u_transitionAlpha',
   DEPTH: 'u_depth',
@@ -569,6 +572,11 @@ class WebGLTileLayerRenderer extends WebGLLayerRenderer {
     const centerX = viewState.center[0];
     const centerY = viewState.center[1];
 
+    let stats = null;
+    if (tileSource instanceof DataTile) {
+      stats = tileSource.getStats();
+    }
+
     for (let j = 0, jj = zs.length; j < jj; ++j) {
       const tileZ = zs[j];
       const tileResolution = tileGrid.getResolution(tileZ);
@@ -659,6 +667,19 @@ class WebGLTileLayerRenderer extends WebGLLayerRenderer {
 
         if (alpha < 1) {
           frameState.animate = true;
+        }
+
+        if (stats) {
+          const bandCount = stats.length;
+          const minValues = new Float32Array(bandCount);
+          const maxValues = new Float32Array(bandCount);
+          for (let bandIndex = 0; bandIndex < bandCount; ++bandIndex) {
+            minValues[bandIndex] = stats[bandIndex].min;
+            maxValues[bandIndex] = stats[bandIndex].max;
+          }
+          console.log(minValues, maxValues);
+          this.helper.setUniformFloatArray(Uniforms.BAND_MIN_ARRAY, minValues);
+          this.helper.setUniformFloatArray(Uniforms.BAND_MAX_ARRAY, maxValues);
         }
 
         this.helper.setUniformFloatValue(Uniforms.TRANSITION_ALPHA, alpha);

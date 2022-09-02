@@ -892,6 +892,7 @@ class GeoTIFFSource extends DataTile {
 
           if (!addAlpha) {
             data[dataIndex] = value;
+            this.updateStats(dataIndex % this.bandCount, value);
           } else {
             let nodata = source.nodata;
             if (nodata === undefined) {
@@ -911,6 +912,7 @@ class GeoTIFFSource extends DataTile {
             ) {
               transparent = false;
               data[dataIndex] = value;
+              this.updateStats(dataIndex % this.bandCount, value);
             }
           }
           dataIndex++;
@@ -926,6 +928,7 @@ class GeoTIFFSource extends DataTile {
       if (addAlpha) {
         if (!transparent) {
           data[dataIndex] = 255;
+          this.updateStats(dataIndex % this.bandCount, 255);
         }
         dataIndex++;
       }

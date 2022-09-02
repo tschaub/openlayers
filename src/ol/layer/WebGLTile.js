@@ -220,11 +220,6 @@ function parseStyle(style, bandCount) {
     return `uniform float ${name};`;
   });
 
-  const textureCount = Math.ceil(bandCount / 4);
-  uniformDeclarations.push(
-    `uniform sampler2D ${Uniforms.TILE_TEXTURE_ARRAY}[${textureCount}];`
-  );
-
   if (context.paletteTextures) {
     uniformDeclarations.push(
       `uniform sampler2D ${PALETTE_TEXTURE_ARRAY}[${context.paletteTextures.length}];`
@@ -236,6 +231,8 @@ function parseStyle(style, bandCount) {
   ) {
     return context.functions[name];
   });
+
+  const textureCount = Math.ceil(bandCount / 4);
 
   const fragmentShader = `
     #ifdef GL_FRAGMENT_PRECISION_HIGH
@@ -253,6 +250,9 @@ function parseStyle(style, bandCount) {
     uniform float ${Uniforms.RESOLUTION};
     uniform float ${Uniforms.ZOOM};
 
+    uniform sampler2D ${Uniforms.TILE_TEXTURE_ARRAY}[${textureCount}];
+    uniform float ${Uniforms.BAND_MIN_ARRAY}[${bandCount}];
+    uniform float ${Uniforms.BAND_MAX_ARRAY}[${bandCount}];
     ${uniformDeclarations.join('\n')}
 
     ${functionDefintions.join('\n')}
