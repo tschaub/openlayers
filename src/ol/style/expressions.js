@@ -561,6 +561,16 @@ Operators['resolution'] = {
   },
 };
 
+Operators['speed'] = {
+  getReturnType: function (args) {
+    return ValueTypes.NUMBER;
+  },
+  toGlsl: function (context, args) {
+    assertArgsCount(args, 0);
+    return 'speed';
+  },
+};
+
 Operators['*'] = {
   getReturnType: function (args) {
     return ValueTypes.NUMBER;
