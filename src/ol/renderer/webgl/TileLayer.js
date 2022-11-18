@@ -135,15 +135,13 @@ function getCacheKey(source, tileCoord) {
  * made available to shaders.
  * @property {Array<import("../../webgl/PaletteTexture.js").default>} [paletteTextures] Palette textures.
  * @property {number} [cacheSize=512] The texture cache size.
- */
-
-/**
- * @typedef {import("../../layer/WebGLTile.js").default} LayerType
+ * @property {Array<import('./Layer.js').PostProcessesOptions>} [postProcesses] Post-processes definitions.
  */
 
 /**
  * @classdesc
  * WebGL renderer for tile layers.
+ * @template {import("../../layer/WebGLTile.js").default | import("../../layer/Field.js").default} [LayerType=import("../../layer/WebGLTile.js").default]
  * @extends {WebGLLayerRenderer<LayerType>}
  * @api
  */
@@ -155,6 +153,7 @@ class WebGLTileLayerRenderer extends WebGLLayerRenderer {
   constructor(tileLayer, options) {
     super(tileLayer, {
       uniforms: options.uniforms,
+      postProcesses: options.postProcesses,
     });
 
     /**
@@ -625,13 +624,11 @@ class WebGLTileLayerRenderer extends WebGLLayerRenderer {
 
         let textureSlot = 0;
         while (textureSlot < tileTexture.textures.length) {
-          const textureProperty = 'TEXTURE' + textureSlot;
           const uniformName = `${Uniforms.TILE_TEXTURE_ARRAY}[${textureSlot}]`;
-          gl.activeTexture(gl[textureProperty]);
-          gl.bindTexture(gl.TEXTURE_2D, tileTexture.textures[textureSlot]);
-          gl.uniform1i(
-            this.helper.getUniformLocation(uniformName),
-            textureSlot
+          this.helper.bindTexture(
+            tileTexture.textures[textureSlot],
+            textureSlot,
+            uniformName
           );
           ++textureSlot;
         }
@@ -642,13 +639,8 @@ class WebGLTileLayerRenderer extends WebGLLayerRenderer {
           ++paletteIndex
         ) {
           const paletteTexture = this.paletteTextures_[paletteIndex];
-          gl.activeTexture(gl['TEXTURE' + textureSlot]);
           const texture = paletteTexture.getTexture(gl);
-          gl.bindTexture(gl.TEXTURE_2D, texture);
-          gl.uniform1i(
-            this.helper.getUniformLocation(paletteTexture.name),
-            textureSlot
-          );
+          this.helper.bindTexture(texture, textureSlot, paletteTexture.name);
           ++textureSlot;
         }
 
@@ -701,6 +693,7 @@ class WebGLTileLayerRenderer extends WebGLLayerRenderer {
       }
     }
 
+    this.beforeFinalize(frameState);
     this.helper.finalizeDraw(
       frameState,
       this.dispatchPreComposeEvent,
@@ -731,6 +724,14 @@ class WebGLTileLayerRenderer extends WebGLLayerRenderer {
 
     this.postRender(gl, frameState);
     return canvas;
+  }
+
+  /**
+   * @param {import("../../Map.js").FrameState} frameState Frame state.
+   * @protected
+   */
+  beforeFinalize(frameState) {
+    return;
   }
 
   /**
