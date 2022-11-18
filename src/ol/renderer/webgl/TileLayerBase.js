@@ -639,6 +639,7 @@ class WebGLBaseTileLayerRenderer extends WebGLLayerRenderer {
       }
     }
 
+    this.beforeFinalize(frameState);
     this.helper.finalizeDraw(
       frameState,
       this.dispatchPreComposeEvent,
@@ -669,6 +670,14 @@ class WebGLBaseTileLayerRenderer extends WebGLLayerRenderer {
 
     this.postRender(gl, frameState);
     return canvas;
+  }
+
+  /**
+   * @param {import("../../Map.js").FrameState} frameState Frame state.
+   * @protected
+   */
+  beforeFinalize(frameState) {
+    return;
   }
 
   /**
