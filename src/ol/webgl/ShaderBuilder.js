@@ -101,6 +101,12 @@ export class ShaderBuilder {
     this.symbolRotateWithView_ = false;
 
     /**
+     * @type {boolean}
+     * @private
+     */
+    this.hasStroke_ = false;
+
+    /**
      * @type {string}
      * @private
      */
@@ -261,11 +267,13 @@ export class ShaderBuilder {
    * @return {ShaderBuilder} the builder object
    */
   setStrokeWidthExpression(expression) {
+    this.hasStroke_ = true;
     this.strokeWidthExpression_ = expression;
     return this;
   }
 
   setStrokeColorExpression(expression) {
+    this.hasStroke_ = true;
     this.strokeColorExpression_ = expression;
     return this;
   }
@@ -436,13 +444,18 @@ ${hitDetectionBypass}
   }
 
   /**
-   * Generates a stroke vertex shader from the builder parameters
+   * Generates a stroke vertex shader from the builder parameters.  If the builder was not
+   * given any stroke-related properties, the return will be an empty string.
    *
    * @param {boolean} [forHitDetection] If true, the shader will be modified to include hit detection variables
    * (namely, hit color with encoded feature id).
    * @return {string} The full shader as a string.
    */
   getStrokeVertexShader(forHitDetection) {
+    if (!this.hasStroke_) {
+      return '';
+    }
+
     let attributes = this.attributes_;
     let varyings = this.varyings_;
 
@@ -536,13 +549,18 @@ ${varyings
   }
 
   /**
-   * Generates a stroke fragment shader from the builder parameters
+   * Generates a stroke fragment shader from the builder parameters.  If the builder was not
+   * given any stroke-related properties, the return will be an empty string.
    *
    * @param {boolean} [forHitDetection] If true, the shader will be modified to include hit detection variables
    * (namely, hit color with encoded feature id).
    * @return {string} The full shader as a string.
    */
   getStrokeFragmentShader(forHitDetection) {
+    if (!this.hasStroke_) {
+      return '';
+    }
+
     const hitDetectionBypass = forHitDetection
       ? '  if (gl_FragColor.a < 0.1) { discard; } gl_FragColor = v_hitColor;'
       : '';

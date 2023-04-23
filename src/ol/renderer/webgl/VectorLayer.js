@@ -334,13 +334,16 @@ class WebGLVectorLayerRenderer extends WebGLLayerRenderer {
       this.pointFragmentShader_,
       this.pointAttributes_
     );
-    this.lineStringRenderer_ = new LineStringBatchRenderer(
-      this.helper,
-      this.worker_,
-      this.strokeVertexShader_,
-      this.strokeFragmentShader_,
-      this.strokeAttributes_
-    );
+
+    if (this.strokeVertexShader_ && this.strokeFragmentShader_) {
+      this.lineStringRenderer_ = new LineStringBatchRenderer(
+        this.helper,
+        this.worker_,
+        this.strokeVertexShader_,
+        this.strokeFragmentShader_,
+        this.strokeAttributes_
+      );
+    }
   }
 
   reset(options) {
@@ -440,14 +443,16 @@ class WebGLVectorLayerRenderer extends WebGLLayerRenderer {
       );
       this.polygonRenderer_.render(this.batch_.polygonBatch);
 
-      this.lineStringRenderer_.preRender(
-        this.batch_.lineStringBatch,
-        frameState
-      );
-      this.applyUniforms_(
-        this.batch_.lineStringBatch.invertVerticesBufferTransform
-      );
-      this.lineStringRenderer_.render(this.batch_.lineStringBatch);
+      if (this.lineStringRenderer_) {
+        this.lineStringRenderer_.preRender(
+          this.batch_.lineStringBatch,
+          frameState
+        );
+        this.applyUniforms_(
+          this.batch_.lineStringBatch.invertVerticesBufferTransform
+        );
+        this.lineStringRenderer_.render(this.batch_.lineStringBatch);
+      }
 
       this.pointRenderer_.preRender(this.batch_.pointBatch, frameState);
       this.applyUniforms_(this.batch_.pointBatch.invertVerticesBufferTransform);
@@ -516,12 +521,16 @@ class WebGLVectorLayerRenderer extends WebGLLayerRenderer {
         'Polygon',
         rebuildCb
       );
-      this.lineStringRenderer_.rebuild(
-        this.batch_.lineStringBatch,
-        transform,
-        'LineString',
-        rebuildCb
-      );
+
+      if (this.lineStringRenderer_) {
+        this.lineStringRenderer_.rebuild(
+          this.batch_.lineStringBatch,
+          transform,
+          'LineString',
+          rebuildCb
+        );
+      }
+
       this.pointRenderer_.rebuild(
         this.batch_.pointBatch,
         transform,

@@ -179,7 +179,6 @@ function parseSymbolProperties(
  * @param {Object<string,import("../webgl/Helper").UniformValue>} uniforms Uniforms
  * @param {import("../style/expressions.js").ParsingContext} vertContext Vertex shader parsing context
  * @param {import("../style/expressions.js").ParsingContext} fragContext Fragment shader parsing context
- * @return {boolean} Whether a stroke style was found
  */
 function parseStrokeProperties(
   style,
@@ -188,21 +187,17 @@ function parseStrokeProperties(
   vertContext,
   fragContext
 ) {
-  // do not apply a stroke style if these properties are missing
-  if (!('stroke-color' in style) && !('stroke-width' in style)) {
-    return false;
+  if ('stroke-color' in style) {
+    builder.setStrokeColorExpression(
+      expressionToGlsl(fragContext, style['stroke-color'], ValueTypes.COLOR)
+    );
   }
 
-  const color = style['stroke-color'] || 'white';
-  const width = style['stroke-width'] || 1;
-  const parsedColor = expressionToGlsl(fragContext, color, ValueTypes.COLOR);
-  const parsedWidth = expressionToGlsl(fragContext, width, ValueTypes.NUMBER);
-
-  builder
-    .setStrokeColorExpression(parsedColor)
-    .setStrokeWidthExpression(parsedWidth);
-
-  return true;
+  if ('stroke-width' in style) {
+    builder.setStrokeWidthExpression(
+      expressionToGlsl(fragContext, style['stroke-width'], ValueTypes.NUMBER)
+    );
+  }
 }
 
 /**
@@ -237,7 +232,6 @@ function parseFillProperties(
  * @typedef {Object} StyleParseResult
  * @property {ShaderBuilder} builder Shader builder pre-configured according to a given style
  * @property {boolean} hasSymbol Has a symbol style defined
- * @property {boolean} hasStroke Has a stroke style defined
  * @property {boolean} hasFill Has a fill style defined
  * @property {Object<string,import("./Helper").UniformValue>} uniforms Uniform definitions.
  * @property {Array<import("../renderer/webgl/PointsLayer").CustomAttribute>} attributes Attribute descriptions.
@@ -291,13 +285,9 @@ export function parseLiteralStyle(style) {
     vertContext,
     fragContext
   );
-  const hasStroke = parseStrokeProperties(
-    style,
-    builder,
-    uniforms,
-    vertContext,
-    fragContext
-  );
+
+  parseStrokeProperties(style, builder, uniforms, vertContext, fragContext);
+
   const hasFill = parseFillProperties(
     style,
     builder,
@@ -392,7 +382,6 @@ export function parseLiteralStyle(style) {
   return {
     builder: builder,
     hasSymbol,
-    hasStroke,
     hasFill,
     attributes: attributes,
     uniforms: uniforms,
