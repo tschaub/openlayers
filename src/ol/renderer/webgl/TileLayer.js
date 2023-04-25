@@ -1,6 +1,7 @@
 /**
  * @module ol/renderer/webgl/TileLayer
  */
+import DataTile from '../../DataTile.js';
 import ReprojDataTile from '../../reproj/DataTile.js';
 import ReprojTile from '../../reproj/Tile.js';
 import TileState from '../../TileState.js';
@@ -25,6 +26,7 @@ import {toSize} from '../../size.js';
 export const Uniforms = {
   ...BaseUniforms,
   TILE_TEXTURE_ARRAY: 'u_tileTextures',
+  FLOAT_TILE_TEXTURE: 'u_floatTileTexture', // the tile textures are float data
   TEXTURE_PIXEL_WIDTH: 'u_texturePixelWidth',
   TEXTURE_PIXEL_HEIGHT: 'u_texturePixelHeight',
   TEXTURE_RESOLUTION: 'u_textureResolution', // map units per texture pixel
@@ -158,6 +160,20 @@ class WebGLTileLayerRenderer extends WebGLBaseTileLayerRenderer {
     this.helper.useProgram(this.program_, frameState);
   }
 
+  /**
+   * @param {TileTexture} tileTexture The tile texture.
+   * @param {import("../../transform.js").Transform} tileTransform Tile transform
+   * @param {import("../../Map.js").FrameState} frameState Frame state
+   * @param {import("../../extent.js").Extent} renderExtent Render extent
+   * @param {number} tileResolution Tile resolution
+   * @param {import("../../size.js").Size} tileSize Tile size
+   * @param {import("../../coordinate.js").Coordinate} tileOrigin Tile origin
+   * @param {import("../../extent.js").Extent} tileExtent tile Extent
+   * @param {number} depth Depth
+   * @param {number} gutter Gutter
+   * @param {number} alpha Alpha
+   * @protected
+   */
   renderTile(
     tileTexture,
     tileTransform,
@@ -216,6 +232,13 @@ class WebGLTileLayerRenderer extends WebGLBaseTileLayerRenderer {
 
     this.helper.setUniformFloatValue(Uniforms.TRANSITION_ALPHA, alpha);
     this.helper.setUniformFloatValue(Uniforms.DEPTH, depth);
+
+    if (tileTexture.tile instanceof DataTile) {
+      this.helper.setUniformBoolValue(
+        Uniforms.FLOAT_TILE_TEXTURE,
+        tileTexture.tile.isFloat()
+      );
+    }
 
     let gutterExtent = renderExtent;
     if (gutter > 0) {

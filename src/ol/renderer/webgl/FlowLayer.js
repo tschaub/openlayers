@@ -13,6 +13,7 @@ import {ARRAY_BUFFER, STATIC_DRAW} from '../../webgl.js';
  * @typedef {Object} Options
  * @property {number} [cacheSize=512] The texture cache size.
  * @property {number} [particles=65536] The number of particles to render.
+ * @property {number} maxSpeed The maximum speed.
  * @property {string} tileVertexShader The flow tile vertex shader.
  * @property {string} tileFragmentShader The flow tile fragment shader.
  * @property {string} textureVertexShader Generic texture fragment shader.
@@ -21,8 +22,6 @@ import {ARRAY_BUFFER, STATIC_DRAW} from '../../webgl.js';
  * @property {string} particlePositionFragmentShader The particle position fragment shader.
  * @property {string} particleColorVertexShader The particle color vertex shader.
  * @property {string} particleColorFragmentShader The particle color fragment shader.
- * @property {number} gain The gain to apply to the velocity vector.
- * @property {number} offset The offset to apply to the velocity vector.
  */
 
 /**
@@ -37,7 +36,6 @@ export const U = {
   MAX_SPEED: 'u_maxSpeed',
   GAIN: 'u_gain',
   OFFSET: 'u_offset',
-  IS_FLOAT: 'u_isFloat',
   RANDOM_SEED: 'u_randomSeed',
   SPEED_FACTOR: 'u_speedFactor',
   DROP_RATE: 'u_dropRate',
@@ -80,10 +78,6 @@ class FlowLayerRenderer extends WebGLTileLayerRenderer {
       fragmentShader: options.tileFragmentShader,
       cacheSize: options.cacheSize,
       postProcesses: [{}],
-      uniforms: {
-        [U.GAIN]: options.gain,
-        [U.OFFSET]: options.offset,
-      },
     });
 
     /**
@@ -207,13 +201,13 @@ class FlowLayerRenderer extends WebGLTileLayerRenderer {
      * @type {number}
      * @private
      */
-    this.maxSpeed_ = 30;
+    this.maxSpeed_ = options.maxSpeed;
 
     /**
      * @type {number}
      * @private
      */
-    this.speedFactor_ = 0.2;
+    this.speedFactor_ = 1;
 
     /**
      * @type {number}

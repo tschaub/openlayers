@@ -61,26 +61,17 @@ const format = new GeoJSON({
 
 const features = format.readFeatures(data);
 
-const maxValue = 40;
 const numValues = 4;
 const values = new Array(numValues).fill(0);
-
-function stretch(value) {
-  if (value < -maxValue) {
-    return 0;
-  }
-  if (value > maxValue) {
-    return 255;
-  }
-  return Math.round((255 * (value + maxValue)) / (2 * maxValue));
-}
 
 const wind = new Interpolated({
   source: new Vector({features}),
   valueCount: 4,
   values: (feature) => {
-    values[0] = stretch(feature.get('u'));
-    values[1] = stretch(feature.get('v'));
+    // values[0] = feature.get('u');
+    // values[1] = feature.get('v');
+    values[0] = 10;
+    values[1] = -10;
     values[3] = 1;
     return values;
   },
@@ -91,32 +82,33 @@ const map = new Map({
   layers: [
     new Flow({
       source: wind,
+      maxSpeed: 10,
       style: {
         color: [
           'interpolate',
           ['linear'],
           ['speed'],
-          0,
+          -10,
           '#34618d',
-          0.1,
+          -8,
           '#2c718e',
-          0.2,
+          -6,
           '#27818e',
-          0.3,
+          -4,
           '#21908d',
-          0.4,
+          -2,
           '#27ad81',
-          0.5,
+          0,
           '#42bb72',
-          0.6,
+          2,
           '#5cc863',
-          0.7,
+          4,
           '#83d24b',
-          0.8,
+          6,
           '#aadc32',
-          0.9,
+          8,
           '#d4e22c',
-          1,
+          10,
           '#fde725',
         ],
       },

@@ -155,6 +155,18 @@ class DataTile extends Tile {
   }
 
   /**
+   * Determine if a tile holds float data.
+   * @return {boolean} The tile holds float data.
+   */
+  isFloat() {
+    const data = this.data_;
+    if (!data) {
+      throw new Error('data tile not yet loaded');
+    }
+    return data instanceof Float32Array;
+  }
+
+  /**
    * Get any loading error.
    * @return {Error} Loading error.
    * @api

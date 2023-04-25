@@ -4,6 +4,7 @@
 import BaseTileLayer from './BaseTile.js';
 import FlowLayerRenderer, {A, U, V} from '../renderer/webgl/FlowLayer.js';
 import LayerProperty from './Property.js';
+import {Uniforms as RU} from '../renderer/webgl/TileLayer.js';
 import {
   ValueTypes,
   expressionToGlsl,
@@ -33,6 +34,7 @@ import {
 
 /**
  * @typedef {Object} Options
+ * @property {number} [maxSpeed=30] The max speed.
  * @property {Style} [style] Style to apply to the layer.
  * @property {string} [className='ol-layer'] A CSS class name to set to the layer element.
  * @property {number} [opacity=1] Opacity (0, 1).
@@ -65,13 +67,13 @@ import {
 
 const tileVertexShader = `
   attribute vec2 a_textureCoord;
-  uniform mat4 u_tileTransform;
-  uniform float u_texturePixelWidth;
-  uniform float u_texturePixelHeight;
-  uniform float u_textureResolution;
-  uniform float u_textureOriginX;
-  uniform float u_textureOriginY;
-  uniform float u_depth;
+  uniform mat4 ${RU.TILE_TRANSFORM};
+  uniform float ${RU.TEXTURE_PIXEL_WIDTH};
+  uniform float ${RU.TEXTURE_PIXEL_HEIGHT};
+  uniform float ${RU.TEXTURE_RESOLUTION};
+  uniform float ${RU.TEXTURE_ORIGIN_X};
+  uniform float ${RU.TEXTURE_ORIGIN_Y};
+  uniform float ${RU.DEPTH};
 
   varying vec2 v_textureCoord;
   varying vec2 v_mapCoord;
@@ -79,10 +81,10 @@ const tileVertexShader = `
   void main() {
     v_textureCoord = a_textureCoord;
     v_mapCoord = vec2(
-      u_textureOriginX + u_textureResolution * u_texturePixelWidth * v_textureCoord[0],
-      u_textureOriginY - u_textureResolution * u_texturePixelHeight * v_textureCoord[1]
+      ${RU.TEXTURE_ORIGIN_X} + ${RU.TEXTURE_RESOLUTION} * ${RU.TEXTURE_PIXEL_WIDTH} * v_textureCoord[0],
+      ${RU.TEXTURE_ORIGIN_Y} - ${RU.TEXTURE_RESOLUTION} * ${RU.TEXTURE_PIXEL_HEIGHT} * v_textureCoord[1]
     );
-    gl_Position = u_tileTransform * vec4(a_textureCoord, u_depth, 1.0);
+    gl_Position = ${RU.TILE_TRANSFORM} * vec4(a_textureCoord, ${RU.DEPTH}, 1.0);
   }
 `;
 
@@ -95,36 +97,36 @@ const tileFragmentShader = `
 
   varying vec2 v_textureCoord;
   varying vec2 v_mapCoord;
-  uniform vec4 u_renderExtent;
-  uniform float u_transitionAlpha;
-  uniform float u_texturePixelWidth;
-  uniform float u_texturePixelHeight;
-  uniform float u_resolution;
-  uniform float u_zoom;
-  uniform bool ${U.IS_FLOAT};
-  uniform float ${U.GAIN};
-  uniform float ${U.OFFSET};
 
-  uniform sampler2D u_tileTextures[1];
+  uniform float ${U.MAX_SPEED};
+  uniform vec4 ${RU.RENDER_EXTENT};
+  uniform float ${RU.TRANSITION_ALPHA};
+  uniform float ${RU.TEXTURE_PIXEL_WIDTH};
+  uniform float ${RU.TEXTURE_PIXEL_HEIGHT};
+  uniform float ${RU.RESOLUTION};
+  uniform float ${RU.ZOOM};
+  uniform bool ${RU.FLOAT_TILE_TEXTURE};
+  uniform sampler2D ${RU.TILE_TEXTURE_ARRAY}[1];
 
   void main() {
     if (
-      v_mapCoord[0] < u_renderExtent[0] ||
-      v_mapCoord[1] < u_renderExtent[1] ||
-      v_mapCoord[0] > u_renderExtent[2] ||
-      v_mapCoord[1] > u_renderExtent[3]
+      v_mapCoord[0] < ${RU.RENDER_EXTENT}[0] ||
+      v_mapCoord[1] < ${RU.RENDER_EXTENT}[1] ||
+      v_mapCoord[0] > ${RU.RENDER_EXTENT}[2] ||
+      v_mapCoord[1] > ${RU.RENDER_EXTENT}[3]
     ) {
       discard;
     }
 
-    vec4 color = texture2D(u_tileTextures[0],  v_textureCoord);
-    if (!${U.IS_FLOAT}) {
-      color.rg = color.rg *= 255.0;
+    vec4 velocity = texture2D(${RU.TILE_TEXTURE_ARRAY}[0],  v_textureCoord);
+    if (!${RU.FLOAT_TILE_TEXTURE}) {
+      velocity.xy = velocity.xy *= 255.0;
     }
 
-    color.rg = color.rg * ${U.GAIN} + ${U.OFFSET};
+    // range = (value - min) / (max - min)
+    vec2 normalized = (velocity.xy + ${U.MAX_SPEED}) / (${U.MAX_SPEED} + ${U.MAX_SPEED});
 
-    gl_FragColor = color;
+    gl_FragColor = vec4(normalized.x, normalized.y, 0.0, velocity.a);
   }
 `;
 
@@ -208,20 +210,22 @@ const particlePositionFragmentShader = `
       positionColor.g / 255.0 + positionColor.a
     );
 
-    vec4 velocityColor = texture2D(${U.VELOCITY_TEXTURE}, particlePosition);
-    if (velocityColor.a == 0.0) {
+    // xy values range from 0 for -max to 1 for max velocity
+    vec4 normalizedVelocity = texture2D(${U.VELOCITY_TEXTURE}, particlePosition);
+    if (normalizedVelocity.a == 0.0) {
       discard;
     }
 
-    float vx = mix(-${U.MAX_SPEED}, ${U.MAX_SPEED}, velocityColor.r);
-    float vy = mix(-${U.MAX_SPEED}, ${U.MAX_SPEED}, velocityColor.g);
+    // new normalized velocities range from -1 to 1
+    float vx = (normalizedVelocity.x * 2.0) - 1.0;
+    float vy = (normalizedVelocity.y * 2.0) - 1.0;
 
     vec2 velocity = vec2(
       vx * ${U.ROTATION}.x - vy * ${U.ROTATION}.y,
       vx * ${U.ROTATION}.y + vy * ${U.ROTATION}.x
     );
 
-    vec2 offset = vec2(velocity.x, velocity.y) * 0.0001 * ${U.SPEED_FACTOR};
+    vec2 offset = vec2(velocity.x, velocity.y) * 0.0002 * ${U.SPEED_FACTOR};
 
     // update particle position, wrapping around the edge
     particlePosition = fract(1.0 + particlePosition + offset);
@@ -468,6 +472,12 @@ class FlowLayer extends BaseTileLayer {
      */
     this.cacheSize_ = cacheSize;
 
+    /**
+     * @type {number}
+     * @private
+     */
+    this.maxSpeed_ = options.maxSpeed || 30;
+
     this.addChangeListener(LayerProperty.SOURCE, this.handleSourceUpdate_);
   }
 
@@ -508,9 +518,7 @@ class FlowLayer extends BaseTileLayer {
     return new FlowLayerRenderer(this, {
       ...parsedStyle,
       cacheSize: this.cacheSize_,
-      // TODO: options for this
-      gain: 1 / 255,
-      offset: 0,
+      maxSpeed: this.maxSpeed_,
     });
   }
 }

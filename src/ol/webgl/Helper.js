@@ -989,6 +989,15 @@ class WebGLHelper extends Disposable {
   }
 
   /**
+   * Give a value for a bool uniform.
+   * @param {string} uniform Uniform name
+   * @param {boolean} value Value
+   */
+  setUniformBoolValue(uniform, value) {
+    this.getGL().uniform1i(this.getUniformLocation(uniform), value ? 1 : 0);
+  }
+
+  /**
    * Give a value for a standard float uniform
    * @param {string} uniform Uniform name
    * @param {number} value Value

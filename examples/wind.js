@@ -155,6 +155,7 @@ const map = new Map({
     }),
     new Flow({
       source: wind,
+      maxSpeed: 30,
       style: {
         color: [
           'interpolate',
