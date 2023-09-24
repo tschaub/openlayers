@@ -2,6 +2,7 @@
  * @module ol/style/IconImageCache
  */
 import ImageState from '../ImageState.js';
+import RegularShape from './RegularShape.js';
 import {getSharedCanvasContext2D} from '../dom.js';
 
 /**
@@ -11,7 +12,7 @@ import {getSharedCanvasContext2D} from '../dom.js';
 class IconImageCache {
   constructor() {
     /**
-     * @type {!Object<string, import("./IconImage.js").default>}
+     * @type {!Object<string, import("./IconImage.js").default | import("./RegularShape.js").default>}
      * @private
      */
     this.cache_ = {};
@@ -32,11 +33,11 @@ class IconImageCache {
      * @type {number}
      * @private
      */
-    this.maxCacheSize_ = 32;
+    this.maxCacheSize_ = 128;
   }
 
   /**
-   * FIXME empty description for jsdoc
+   * Remove all cached items
    */
   clear() {
     this.cache_ = {};
@@ -52,30 +53,31 @@ class IconImageCache {
   }
 
   /**
-   * FIXME empty description for jsdoc
+   * Evict some cached items
    */
   expire() {
-    if (this.canExpireCache()) {
-      let i = 0;
-      for (const key in this.cache_) {
-        const iconImage = this.cache_[key];
-        if ((i++ & 3) === 0 && !iconImage.hasListener()) {
-          delete this.cache_[key];
-          delete this.patternCache_[key];
-          --this.cacheSize_;
-        }
+    if (!this.canExpireCache()) {
+      return;
+    }
+    let i = 0;
+    for (const key in this.cache_) {
+      const icon = this.cache_[key];
+      if (
+        (i++ & 3) === 0 &&
+        (icon instanceof RegularShape || !icon.hasListener())
+      ) {
+        delete this.cache_[key];
+        delete this.patternCache_[key];
+        --this.cacheSize_;
       }
     }
   }
 
   /**
-   * @param {string} src Src.
-   * @param {?string} crossOrigin Cross origin.
-   * @param {string|null} color Color.
-   * @return {import("./IconImage.js").default} Icon image.
+   * @param {string} key Key.
+   * @return {import("./IconImage.js").default | RegularShape} Icon image.
    */
-  get(src, crossOrigin, color) {
-    const key = getCacheKey(src, crossOrigin, color);
+  get(key) {
     return key in this.cache_ ? this.cache_[key] : null;
   }
 
@@ -86,7 +88,7 @@ class IconImageCache {
    * @return {CanvasPattern} Icon image.
    */
   getPattern(src, crossOrigin, color) {
-    const key = getCacheKey(src, crossOrigin, color);
+    const key = getIconKey(src, crossOrigin, color);
     return key in this.patternCache_ ? this.patternCache_[key] : null;
   }
 
@@ -98,7 +100,7 @@ class IconImageCache {
    * @param {boolean} [pattern] Also cache a `'repeat'` pattern with this `iconImage`.
    */
   set(src, crossOrigin, color, iconImage, pattern) {
-    const key = getCacheKey(src, crossOrigin, color);
+    const key = getIconKey(src, crossOrigin, color);
     const update = key in this.cache_;
     this.cache_[key] = iconImage;
     if (pattern) {
@@ -125,9 +127,9 @@ class IconImageCache {
   }
 
   /**
-   * Set the cache size of the icon cache. Default is `32`. Change this value when
-   * your map uses more than 32 different icon images and you are not caching icon
-   * styles on the application level.
+   * Set the cache size of the icon cache. Default is `128`.Change this value when
+   * your map uses more than the default number of icons images or RegularShapes
+   * and you are not caching these on the application level.
    * @param {number} maxCacheSize Cache max size.
    * @api
    */
@@ -139,12 +141,12 @@ class IconImageCache {
 
 /**
  * @param {string} src Src.
- * @param {?string} crossOrigin Cross origin.
+ * @param {string|null} crossOrigin Cross origin.
  * @param {string|null} color Color.
  * @return {string} Cache key.
  */
-export function getCacheKey(src, crossOrigin, color) {
-  return crossOrigin + ':' + src + ':' + color;
+export function getIconKey(src, crossOrigin, color) {
+  return src + ':' + crossOrigin + ':' + color;
 }
 
 export default IconImageCache;
