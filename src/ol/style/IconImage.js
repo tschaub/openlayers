@@ -21,7 +21,7 @@ class IconImage extends EventTarget {
    * @param {string|undefined} src Src.
    * @param {?string} crossOrigin Cross origin.
    * @param {import("../ImageState.js").default|undefined} imageState Image state.
-   * @param {import("../color.js").Color|string|null} color Color.
+   * @param {string|null} color Color.
    */
   constructor(image, src, crossOrigin, imageState, color) {
     super();
@@ -52,7 +52,7 @@ class IconImage extends EventTarget {
 
     /**
      * @private
-     * @type {import("../color.js").Color|string|null}
+     * @type {string|null}
      */
     this.color_ = color;
 
@@ -302,7 +302,7 @@ class IconImage extends EventTarget {
  * @param {string|undefined} cacheKey Src.
  * @param {?string} crossOrigin Cross origin.
  * @param {import("../ImageState.js").default|undefined} imageState Image state.
- * @param {import("../color.js").Color|string|null} color Color.
+ * @param {string|null} color Color.
  * @param {boolean} [pattern] Also cache a `repeat` pattern with the icon image.
  * @return {IconImage} Icon image.
  */

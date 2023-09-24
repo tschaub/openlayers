@@ -2,7 +2,6 @@
  * @module ol/style/IconImageCache
  */
 import ImageState from '../ImageState.js';
-import {asArray} from '../color.js';
 import {getSharedCanvasContext2D} from '../dom.js';
 
 /**
@@ -72,7 +71,7 @@ class IconImageCache {
   /**
    * @param {string} src Src.
    * @param {?string} crossOrigin Cross origin.
-   * @param {import("../color.js").Color|string|null} color Color.
+   * @param {string|null} color Color.
    * @return {import("./IconImage.js").default} Icon image.
    */
   get(src, crossOrigin, color) {
@@ -83,7 +82,7 @@ class IconImageCache {
   /**
    * @param {string} src Src.
    * @param {?string} crossOrigin Cross origin.
-   * @param {import("../color.js").Color|string|null} color Color.
+   * @param {string|null} color Color.
    * @return {CanvasPattern} Icon image.
    */
   getPattern(src, crossOrigin, color) {
@@ -94,7 +93,7 @@ class IconImageCache {
   /**
    * @param {string} src Src.
    * @param {?string} crossOrigin Cross origin.
-   * @param {import("../color.js").Color|string|null} color Color.
+   * @param {string|null} color Color.
    * @param {import("./IconImage.js").default|null} iconImage Icon image.
    * @param {boolean} [pattern] Also cache a `'repeat'` pattern with this `iconImage`.
    */
@@ -141,12 +140,11 @@ class IconImageCache {
 /**
  * @param {string} src Src.
  * @param {?string} crossOrigin Cross origin.
- * @param {import("../color.js").Color|string|null} color Color.
+ * @param {string|null} color Color.
  * @return {string} Cache key.
  */
 export function getCacheKey(src, crossOrigin, color) {
-  const colorString = color ? asArray(color) : 'null';
-  return crossOrigin + ':' + src + ':' + colorString;
+  return crossOrigin + ':' + src + ':' + color;
 }
 
 export default IconImageCache;
