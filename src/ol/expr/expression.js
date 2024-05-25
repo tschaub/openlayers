@@ -229,9 +229,13 @@ export class CallExpression {
  */
 
 /**
+ * @typedef {Object<string, Array<string|number>>} PropertyLookup Property keys mapped to property paths.
+ */
+
+/**
  * @typedef {Object} ParsingContext
  * @property {Set<string>} variables Variables referenced with the 'var' operator.
- * @property {Set<string>} properties Properties referenced with the 'get' operator.
+ * @property {PropertyLookup} properties Properties referenced with the 'get' operator.
  * @property {boolean} featureId The style uses the feature id.
  * @property {boolean} geometryType The style uses the feature geometry type.
  * @property {import("../style/flat.js").FlatStyle|import("../style/webgl.js").WebGLStyle} style The style being parsed
@@ -243,7 +247,7 @@ export class CallExpression {
 export function newParsingContext() {
   return {
     variables: new Set(),
-    properties: new Set(),
+    properties: {},
     featureId: false,
     geometryType: false,
     style: {},
@@ -635,26 +639,26 @@ const parsers = {
  */
 function withGetArgs(encoded, context) {
   const args = [];
+  /**
+   * @type {Array<string|number>}
+   */
+  const path = [];
   for (let i = 1, ii = encoded.length; i < ii; ++i) {
     const arg = parse(encoded[i], context);
-    args.push(arg);
     if (!(arg instanceof LiteralExpression)) {
       throw new Error('Expected a literal argument for get operation');
     }
-    if (i > 1) {
-      if (typeof arg.value !== 'string' && typeof arg.value !== 'number') {
-        throw new Error(
-          'Expected key or array index of a get operation to be a string or number',
-        );
-      }
-      continue;
-    }
-    if (typeof arg.value !== 'string') {
+    if (typeof arg.value !== 'string' && typeof arg.value !== 'number') {
       throw new Error(
-        'Expected the attribute name of a get operation to be a string',
+        'Expected key or array index of a get operation to be a string or number',
       );
     }
-    context.properties.add(String(arg.value));
+    path.push(arg.value);
+    args.push(arg);
+  }
+  const key = JSON.stringify(path);
+  if (!(key in context.properties)) {
+    context.properties[key] = path;
   }
   return args;
 }

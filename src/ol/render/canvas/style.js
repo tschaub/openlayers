@@ -75,8 +75,19 @@ export function rulesToStyleFunction(rules) {
   const evaluator = buildRuleSet(rules, parsingContext);
   const evaluationContext = newEvaluationContext();
   return function (feature, resolution) {
-    evaluationContext.properties = feature.getPropertiesInternal();
     evaluationContext.resolution = resolution;
+    const featureProperties = feature.getPropertiesInternal();
+    for (const key in parsingContext.variables) {
+      const path = parsingContext.properties[key];
+      let value = featureProperties[path[0]];
+      for (let i = 1, ii = path.length; i < ii; ++i) {
+        const part = path[i];
+        if (value && value.hasOwnProperty(part)) {
+          value = value[part];
+        }
+      }
+      evaluationContext.properties[key] = value;
+    }
     if (parsingContext.featureId) {
       const id = feature.getId();
       if (id !== undefined) {

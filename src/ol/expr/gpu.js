@@ -23,6 +23,20 @@ import {asArray} from '../color.js';
 import {toSize} from '../size.js';
 
 /**
+ * Packs all components of a color into a two-floats array
+ * @param {import("../color.js").Color|string} color Color as array of numbers or string
+ * @return {Array<number>} Vec2 array containing the color in compressed form
+ */
+export function packColor(color) {
+  const array = asArray(color);
+  const r = array[0] * 256;
+  const g = array[1];
+  const b = array[2] * 256;
+  const a = Math.round(array[3] * 255);
+  return [r + g, b + a];
+}
+
+/**
  * @param {string} operator Operator
  * @param {CompilationContext} context Compilation context
  * @return {string} A function name based on the operator, unique in the given context
@@ -134,16 +148,16 @@ export function uniformNameForVariable(variableName) {
 
 /**
  * @typedef {Object} CompilationContextProperty
- * @property {string} name Name
- * @property {number} type Resolved property type
- * @property {function(import("../Feature.js").FeatureLike): *} [evaluator] Function used for evaluating the value;
+ * @property {string} name Name for the property (will be prefiex by `a_` or `v_` in the shaders).
+ * @property {number} type Resolved property type.
+ * @property {function(import("../Feature.js").FeatureLike): any} evaluator Function used for evaluating the value.
  */
 
 /**
  * @typedef {Object} CompilationContextVariable
  * @property {string} name Name
  * @property {number} type Resolved variable type
- * @property {function(Object): *} [evaluator] Function used for evaluating the value; argument is the style variables object
+ * @property {function(Object): any} [evaluator] Function used for evaluating the value; argument is the style variables object
  */
 
 /**
@@ -226,37 +240,84 @@ function createCompiler(output) {
   };
 }
 
+// TODO: look into using a single compliation context and keeping track of key-name pairs there
+let propIndex = 0;
+const propNames = {};
+function getPropName(key) {
+  if (key in propNames) {
+    return propNames[key];
+  }
+  const name = 'prop_' + propIndex;
+  propIndex += 1;
+  propNames[key] = name;
+  return name;
+}
+
 /**
  * @type {Object<string, Compiler>}
  */
 const compilers = {
   [Ops.Get]: (context, expression) => {
-    const firstArg = /** @type {LiteralExpression} */ (expression.args[0]);
-    const propName = /** @type {string} */ (firstArg.value);
-    const isExisting = propName in context.properties;
-    if (!isExisting) {
-      context.properties[propName] = {
-        name: propName,
-        type: expression.type,
+    const args = expression.args;
+    const path = [];
+    for (let i = 0, ii = args.length; i < ii; ++i) {
+      const arg = /** @type {LiteralExpression} */ (args[i]);
+      path.push(arg.value);
+    }
+    const key = JSON.stringify(path);
+    const name = getPropName(key);
+    if (!(key in context.properties)) {
+      const type = expression.type;
+      context.properties[key] = {
+        name,
+        type,
+        evaluator: (feature) => {
+          const featureProperties = feature.getPropertiesInternal();
+          let value = featureProperties[path[0]];
+          for (let i = 1, ii = path.length; i < ii; ++i) {
+            const part = path[i];
+            if (value && value.hasOwnProperty(part)) {
+              value = value[part];
+            }
+          }
+          switch (type) {
+            case StringType: {
+              return getStringNumberEquivalent(value);
+            }
+            case ColorType: {
+              if (!value) {
+                // TODO: implement the `string` operator and move this default to the webgl-vector-layer example
+                value = '#eee';
+              }
+              return packColor([...asArray(value)]);
+            }
+            case BooleanType: {
+              return value ? 1 : 0;
+            }
+            default: {
+              return value;
+            }
+          }
+        },
       };
     }
-    const prefix = context.inFragmentShader ? 'v_prop_' : 'a_prop_';
-    return prefix + propName;
+
+    const prefix = context.inFragmentShader ? 'v_' : 'a_';
+    return prefix + name;
   },
   [Ops.GeometryType]: (context, expression, type) => {
-    const propName = 'geometryType';
-    const isExisting = propName in context.properties;
-    if (!isExisting) {
-      context.properties[propName] = {
-        name: propName,
+    const name = 'geometryType';
+    if (!(name in context.properties)) {
+      context.properties[name] = {
+        name,
         type: StringType,
         evaluator: (feature) => {
           return computeGeometryType(feature.getGeometry());
         },
       };
     }
-    const prefix = context.inFragmentShader ? 'v_prop_' : 'a_prop_';
-    return prefix + propName;
+    const prefix = context.inFragmentShader ? 'v_' : 'a_';
+    return prefix + name;
   },
   [Ops.Var]: (context, expression) => {
     const firstArg = /** @type {LiteralExpression} */ (expression.args[0]);

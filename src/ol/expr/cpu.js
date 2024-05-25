@@ -29,8 +29,8 @@ import {
 
 /**
  * @typedef {Object} EvaluationContext
- * @property {Object} properties The values for properties used in 'get' expressions.
- * @property {Object} variables The values for variables used in 'var' expressions.
+ * @property {Object<string, import('./expression.js').LiteralValue>} properties The values for properties used in 'get' expressions.
+ * @property {Object<string, import('./expression.js').LiteralValue>} variables The values for variables used in 'var' expressions.
  * @property {number} resolution The map resolution.
  * @property {string|number|null} featureId The feature id.
  * @property {string} geometryType Geometry type of the current object.
@@ -252,22 +252,20 @@ function compileAssertionExpression(expression, context) {
  * @return {ExpressionEvaluator} The evaluator function.
  */
 function compileAccessorExpression(expression, context) {
-  const nameExpression = /** @type {LiteralExpression} */ (expression.args[0]);
-  const name = /** @type {string} */ (nameExpression.value);
   switch (expression.operator) {
     case Ops.Get: {
-      return (context) => {
-        const args = expression.args;
-        let value = context.properties[name];
-        for (let i = 1, ii = args.length; i < ii; ++i) {
-          const keyExpression = /** @type {LiteralExpression} */ (args[i]);
-          const key = /** @type {string|number} */ (keyExpression.value);
-          value = value[key];
-        }
-        return value;
-      };
+      const path = [];
+      for (const arg of expression.args) {
+        path.push(/** @type {LiteralExpression} */ (arg).value);
+      }
+      const key = JSON.stringify(path);
+      return (context) => context.properties[key];
     }
     case Ops.Var: {
+      const nameExpression = /** @type {LiteralExpression} */ (
+        expression.args[0]
+      );
+      const name = /** @type {string} */ (nameExpression.value);
       return (context) => context.variables[name];
     }
     default: {

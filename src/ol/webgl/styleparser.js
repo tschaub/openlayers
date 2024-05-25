@@ -16,6 +16,7 @@ import {
   arrayToGlsl,
   buildExpression,
   getStringNumberEquivalent,
+  packColor,
   stringToGlsl,
   uniformNameForVariable,
 } from '../expr/gpu.js';
@@ -38,20 +39,6 @@ export function expressionToGlsl(compilationContext, value, expectedType) {
     parsingContext,
     compilationContext,
   );
-}
-
-/**
- * Packs all components of a color into a two-floats array
- * @param {import("../color.js").Color|string} color Color as array of numbers or string
- * @return {Array<number>} Vec2 array containing the color in compressed form
- */
-export function packColor(color) {
-  const array = asArray(color);
-  const r = array[0] * 256;
-  const g = array[1];
-  const b = array[2] * 256;
-  const a = Math.round(array[3] * 255);
-  return [r + g, b + a];
 }
 
 const UNPACK_COLOR_FN = `vec4 unpackColor(vec2 packedColor) {
@@ -948,54 +935,36 @@ export function parseLiteralStyle(style) {
 
   // for each feature attribute used in the fragment shader, define a varying that will be used to pass data
   // from the vertex to the fragment shader, as well as an attribute in the vertex shader (if not already present)
-  Object.keys(fragContext.properties).forEach(function (propName) {
-    const property = fragContext.properties[propName];
-    if (!vertContext.properties[propName]) {
-      vertContext.properties[propName] = property;
+  for (const key in fragContext.properties) {
+    const property = fragContext.properties[key];
+    if (!vertContext.properties[key]) {
+      vertContext.properties[key] = property;
     }
     let type = getGlslTypeFromType(property.type);
-    let expression = `a_prop_${property.name}`;
+    let expression = 'a_' + property.name;
     if (property.type === ColorType) {
       type = 'vec4';
       expression = `unpackColor(${expression})`;
       builder.addVertexShaderFunction(UNPACK_COLOR_FN);
     }
-    builder.addVarying(`v_prop_${property.name}`, type, expression);
-  });
+    builder.addVarying('v_' + property.name, type, expression);
+  }
 
-  // for each feature attribute used in the vertex shader, define an attribute in the vertex shader.
-  Object.keys(vertContext.properties).forEach(function (propName) {
-    const property = vertContext.properties[propName];
+  /**
+   * @type {import('../render/webgl/VectorStyleRenderer.js').AttributeDefinitions}
+   */
+  const attributes = {};
+
+  for (const key in vertContext.properties) {
+    const property = vertContext.properties[key];
     builder.addAttribute(
-      `${getGlslTypeFromType(property.type)} a_prop_${property.name}`,
+      `${getGlslTypeFromType(property.type)} a_${property.name}`,
     );
-  });
-
-  const attributes = Object.keys(vertContext.properties).map(
-    function (propName) {
-      const property = vertContext.properties[propName];
-      let callback;
-      if (property.evaluator) {
-        callback = property.evaluator;
-      } else if (property.type === StringType) {
-        callback = (feature) =>
-          getStringNumberEquivalent(feature.get(property.name));
-      } else if (property.type === ColorType) {
-        callback = (feature) =>
-          packColor([...asArray(feature.get(property.name) || '#eee')]);
-      } else if (property.type === BooleanType) {
-        callback = (feature) => (feature.get(property.name) ? 1.0 : 0.0);
-      } else {
-        callback = (feature) => feature.get(property.name);
-      }
-
-      return {
-        name: property.name,
-        size: getGlslSizeFromType(property.type),
-        callback,
-      };
-    },
-  );
+    attributes[property.name] = {
+      size: getGlslSizeFromType(property.type),
+      callback: property.evaluator,
+    };
+  }
 
   // add functions that were collected in the compilation contexts
   for (const functionName in vertContext.functions) {
@@ -1005,15 +974,5 @@ export function parseLiteralStyle(style) {
     builder.addFragmentShaderFunction(fragContext.functions[functionName]);
   }
 
-  return {
-    builder: builder,
-    attributes: attributes.reduce(
-      (prev, curr) => ({
-        ...prev,
-        [curr.name]: {callback: curr.callback, size: curr.size},
-      }),
-      {},
-    ),
-    uniforms: uniforms,
-  };
+  return {builder, attributes, uniforms};
 }
