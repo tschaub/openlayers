@@ -13,11 +13,24 @@ import {
   StringType,
   computeGeometryType,
   parse,
-  typeName,
 } from './expression.js';
 import {Uniforms} from '../renderer/webgl/TileLayer.js';
 import {asArray} from '../color.js';
 import {toSize} from '../size.js';
+
+/**
+ * Packs all components of a color into a two-floats array
+ * @param {import("../color.js").Color|string} color Color as array of numbers or string
+ * @return {Array<number>} Vec2 array containing the color in compressed form
+ */
+export function packColor(color) {
+  const array = asArray(color);
+  const r = array[0] * 256;
+  const g = array[1];
+  const b = array[2] * 256;
+  const a = Math.round(array[3] * 255);
+  return [r + g, b + a];
+}
 
 /**
  * @param {string} operator Operator
@@ -127,14 +140,14 @@ export function uniformNameForVariable(variableName) {
  * @typedef {Object} CompilationContextProperty
  * @property {string} name Name
  * @property {number} type Resolved property type
- * @property {function(import("../Feature.js").FeatureLike): *} [evaluator] Function used for evaluating the value;
+ * @property {function(import("../Feature.js").FeatureLike): *} evaluator Function used for evaluating the value;
  */
 
 /**
  * @typedef {Object} CompilationContextVariable
  * @property {string} name Name
  * @property {number} type Resolved variable type
- * @property {function(Object): *} [evaluator] Function used for evaluating the value; argument is the style variables object
+ * @property {function(Object): *} evaluator Function used for evaluating the value; argument is the style variables object
  */
 
 /**
@@ -145,7 +158,6 @@ export function uniformNameForVariable(variableName) {
  * @property {Object<string, string>} functions Lookup of functions used by the style.
  * @property {number} [bandCount] Number of bands per pixel.
  * @property {Array<PaletteTexture>} [paletteTextures] List of palettes used by the style.
- * @property {import("../style/webgl.js").WebGLStyle} style Literal style.
  */
 
 /**
@@ -158,7 +170,6 @@ export function newCompilationContext() {
     properties: {},
     functions: {},
     bandCount: 0,
-    style: {},
   };
 }
 
@@ -171,8 +182,7 @@ export const PALETTE_TEXTURE_ARRAY = 'u_paletteTextures';
  */
 
 /**
- * @typedef {function(CompilationContext, CallExpression, number): string} Compiler
- * Third argument is the expected value types
+ * @typedef {function(CompilationContext, CallExpression): string} Compiler
  */
 
 /**
@@ -189,19 +199,19 @@ export function buildExpression(
   compilationContext,
 ) {
   const expression = parse(encoded, type, parsingContext);
-  return compile(expression, type, compilationContext);
+  return compile(expression, compilationContext);
 }
 
 /**
  * @param {function(Array<CompiledExpression>, CompilationContext): string} output Function that takes in parsed arguments and returns a string
- * @return {function(CompilationContext, import("./expression.js").CallExpression, number): string} Compiler for the call expression
+ * @return {function(CompilationContext, import("./expression.js").CallExpression): string} Compiler for the call expression
  */
 function createCompiler(output) {
-  return (context, expression, type) => {
+  return (context, expression) => {
     const length = expression.args.length;
     const args = new Array(length);
     for (let i = 0; i < length; ++i) {
-      args[i] = compile(expression.args[i], type, context);
+      args[i] = compile(expression.args[i], context);
     }
     return output(args, context);
   };
@@ -219,12 +229,26 @@ const compilers = {
       context.properties[propName] = {
         name: propName,
         type: expression.type,
+        evaluator: (feature) => {
+          const value = feature.get(firstArg.value);
+          if (firstArg.type === ColorType) {
+            return packColor([...asArray(value || '#eee')]);
+          }
+          if (typeof value === 'string') {
+            return getStringNumberEquivalent(value);
+          }
+          if (typeof value === 'boolean') {
+            return value ? 1 : 0;
+          }
+          return value;
+        },
       };
     }
     const prefix = context.inFragmentShader ? 'v_prop_' : 'a_prop_';
     return prefix + propName;
   },
-  [Ops.GeometryType]: (context, expression, type) => {
+  [Ops.GeometryType]: (context, expression) => {
+    // TODO: don't use the `properties` lookup for this
     const propName = 'geometryType';
     const isExisting = propName in context.properties;
     if (!isExisting) {
@@ -248,6 +272,19 @@ const compilers = {
       context.variables[varName] = {
         name: varName,
         type: expression.type,
+        evaluator: (variables) => {
+          const value = variables[firstArg.value];
+          if (firstArg.type === ColorType) {
+            return packColor([...asArray(value || '#eee')]);
+          }
+          if (typeof value === 'string') {
+            return getStringNumberEquivalent(value);
+          }
+          if (typeof value === 'boolean') {
+            return value ? 1 : 0;
+          }
+          return value;
+        },
       };
     }
     return uniformNameForVariable(varName);
@@ -303,7 +340,18 @@ const compilers = {
       : `atan(${firstValue})`;
   }),
   [Ops.Sqrt]: createCompiler(([value]) => `sqrt(${value})`),
-  [Ops.Match]: createCompiler((compiledArgs) => {
+  [Ops.MatchNumber]: createCompiler((compiledArgs) => {
+    const input = compiledArgs[0];
+    const fallback = compiledArgs[compiledArgs.length - 1];
+    let result = null;
+    for (let i = compiledArgs.length - 3; i >= 1; i -= 2) {
+      const match = compiledArgs[i];
+      const output = compiledArgs[i + 1];
+      result = `(${input} == ${match} ? ${output} : ${result || fallback})`;
+    }
+    return result;
+  }),
+  [Ops.MatchString]: createCompiler((compiledArgs) => {
     const input = compiledArgs[0];
     const fallback = compiledArgs[compiledArgs.length - 1];
     let result = null;
@@ -426,24 +474,19 @@ ${ifBlocks}
     const paletteName = `${PALETTE_TEXTURE_ARRAY}[${context.paletteTextures.length}]`;
     const paletteTexture = new PaletteTexture(paletteName, palette);
     context.paletteTextures.push(paletteTexture);
-    const compiledIndex = compile(index, NumberType, context);
+    const compiledIndex = compile(index, context);
     return `texture2D(${paletteName}, vec2((${compiledIndex} + 0.5) / ${numColors}.0, 0.5))`;
   },
   // TODO: unimplemented
-  // Ops.Number
-  // Ops.String
-  // Ops.Coalesce
   // Ops.Concat
-  // Ops.ToString
 };
 
 /**
  * @param {Expression} expression The expression.
- * @param {number} returnType The expected return type.
  * @param {CompilationContext} context The compilation context.
  * @return {CompiledExpression} The compiled expression
  */
-function compile(expression, returnType, context) {
+function compile(expression, context) {
   // operator
   if (expression instanceof CallExpression) {
     const compiler = compilers[expression.operator];
@@ -454,40 +497,38 @@ function compile(expression, returnType, context) {
         )}`,
       );
     }
-    return compiler(context, expression, returnType);
+    return compiler(context, expression);
   }
 
-  if ((expression.type & NumberType) > 0) {
+  if (expression.type === NumberType) {
     return numberToGlsl(/** @type {number} */ (expression.value));
   }
 
-  if ((expression.type & BooleanType) > 0) {
+  if (expression.type === BooleanType) {
     return expression.value.toString();
   }
 
-  if ((expression.type & StringType) > 0) {
+  if (expression.type === StringType) {
     return stringToGlsl(expression.value.toString());
   }
 
-  if ((expression.type & ColorType) > 0) {
+  if (expression.type === ColorType) {
     return colorToGlsl(
       /** @type {Array<number> | string} */ (expression.value),
     );
   }
 
-  if ((expression.type & NumberArrayType) > 0) {
+  if (expression.type === NumberArrayType) {
     return arrayToGlsl(/** @type {Array<number>} */ (expression.value));
   }
 
-  if ((expression.type & SizeType) > 0) {
+  if (expression.type === SizeType) {
     return sizeToGlsl(
       /** @type {number|import('../size.js').Size} */ (expression.value),
     );
   }
 
   throw new Error(
-    `Unexpected expression ${expression.value} (expected type ${typeName(
-      returnType,
-    )})`,
+    `Unexpected expression ${expression.value} (expected type ${expression.type})`,
   );
 }

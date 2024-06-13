@@ -1,7 +1,6 @@
 import Feature from '../../../../src/ol/Feature.js';
 import expect from '../../expect.js';
 import {
-  AnyType,
   BooleanType,
   ColorType,
   NumberArrayType,
@@ -18,8 +17,10 @@ import {
   getStringNumberEquivalent,
   newCompilationContext,
   numberToGlsl,
+  packColor,
   stringToGlsl,
 } from '../../../../src/ol/expr/gpu.js';
+import {asArray} from '../../../../src/ol/color.js';
 
 describe('ol/expr/gpu.js', () => {
   describe('numberToGlsl()', () => {
@@ -29,6 +30,13 @@ describe('ol/expr/gpu.js', () => {
     it('adds a fraction separator when missing', () => {
       expect(numberToGlsl(1)).to.eql('1.0');
       expect(numberToGlsl(2.0)).to.eql('2.0');
+    });
+  });
+
+  describe('packColor()', () => {
+    it('compresses all the components of a color into a [number, number] array', () => {
+      expect(packColor(asArray('red'))).to.eql([65280, 255]);
+      expect(packColor(asArray('rgba(0, 255, 255, 0.5)'))).to.eql([255, 65408]);
     });
   });
 
@@ -106,7 +114,7 @@ describe('ol/expr/gpu.js', () => {
     const cases = [
       {
         name: 'boolean literal',
-        type: AnyType,
+        type: BooleanType,
         expression: true,
         expected: 'true',
       },
@@ -124,13 +132,13 @@ describe('ol/expr/gpu.js', () => {
       // },
       {
         name: 'get',
-        type: AnyType,
+        type: StringType,
         expression: ['get', 'myAttr'],
         expected: 'a_prop_myAttr',
       },
       {
         name: 'get (in fragment shader)',
-        type: AnyType,
+        type: StringType,
         expression: ['get', 'myAttr'],
         expected: 'v_prop_myAttr',
         context: {
@@ -139,7 +147,7 @@ describe('ol/expr/gpu.js', () => {
       },
       {
         name: 'var',
-        type: AnyType,
+        type: StringType,
         expression: ['var', 'myVar'],
         expected: 'u_var_myVar',
         context: {
@@ -152,12 +160,12 @@ describe('ol/expr/gpu.js', () => {
         contextAssertion: (context) => {
           const variable = context.variables['myVar'];
           expect(variable.name).to.equal('myVar');
-          expect(variable.type).to.equal(AnyType);
+          expect(variable.type).to.equal(StringType);
         },
       },
       {
         name: 'geometry-type',
-        type: AnyType,
+        type: StringType,
         expression: ['geometry-type'],
         expected: 'a_prop_geometryType',
         contextAssertion: (context) => {
@@ -171,252 +179,241 @@ describe('ol/expr/gpu.js', () => {
       },
       {
         name: 'geometry-type (in fragment shader)',
-        type: AnyType,
+        type: StringType,
         expression: ['geometry-type'],
         context: {
           inFragmentShader: true,
         },
         expected: 'v_prop_geometryType',
       },
-      {
-        name: 'line-metric',
-        type: AnyType,
-        expression: ['line-metric'],
-        expected: 'currentLineMetric',
-      },
+      // TODO: deal with this
+      // {
+      //   name: 'line-metric',
+      //   type: AnyType,
+      //   expression: ['line-metric'],
+      //   expected: 'currentLineMetric',
+      // },
       {
         name: 'time',
-        type: AnyType,
+        type: NumberType,
         expression: ['time'],
         expected: 'u_time',
       },
       {
         name: 'zoom',
-        type: AnyType,
+        type: NumberType,
         expression: ['zoom'],
         expected: 'u_zoom',
       },
       {
         name: 'resolution',
-        type: AnyType,
+        type: NumberType,
         expression: ['resolution'],
         expected: 'u_resolution',
       },
       {
         name: 'addition',
-        type: AnyType,
+        type: NumberType,
         expression: ['+', 1, 2, 3, 4],
         expected: '(1.0 + 2.0 + 3.0 + 4.0)',
       },
       {
         name: 'addition with property',
-        type: AnyType,
+        type: NumberType,
         expression: ['+', ['*', ['get', 'size'], 0.001], 12],
         expected: '((a_prop_size * 0.001) + 12.0)',
       },
       {
         name: 'subtraction',
-        type: AnyType,
+        type: NumberType,
         expression: ['-', ['get', 'number'], 1],
         expected: '(a_prop_number - 1.0)',
       },
       {
         name: 'subtraction with property',
-        type: AnyType,
+        type: NumberType,
         expression: ['/', ['-', ['get', 'size'], 20], 100],
         expected: '((a_prop_size - 20.0) / 100.0)',
       },
       {
         name: 'multiplication',
-        type: AnyType,
+        type: NumberType,
         expression: ['*', 2, 4, 6, 8],
         expected: '(2.0 * 4.0 * 6.0 * 8.0)',
       },
       {
-        name: 'multiplication (infer string as color)',
-        type: ColorType,
-        expression: ['*', [255, 127.5, 0, 0.5], 'red'],
-        expected: '(vec4(1.0, 0.5, 0.0, 0.5) * vec4(1.0, 0.0, 0.0, 1.0))',
-      },
-      {
         name: 'division',
-        type: AnyType,
+        type: NumberType,
         expression: ['/', ['get', 'number'], 2],
         expected: '(a_prop_number / 2.0)',
       },
       {
         name: 'clamp',
-        type: AnyType,
+        type: NumberType,
         expression: ['clamp', ['get', 'attr2'], ['get', 'attr3'], 20],
         expected: 'clamp(a_prop_attr2, a_prop_attr3, 20.0)',
       },
       {
         name: 'pow',
-        type: AnyType,
+        type: NumberType,
         expression: ['^', ['%', ['time'], 10], 2],
         expected: 'pow(mod(u_time, 10.0), 2.0)',
       },
       {
         name: 'abs',
-        type: AnyType,
+        type: NumberType,
         expression: ['abs', ['-', ['get', 'attr3'], ['get', 'attr2']]],
         expected: 'abs((a_prop_attr3 - a_prop_attr2))',
       },
 
       {
         name: 'floor',
-        type: AnyType,
+        type: NumberType,
         expression: ['floor', 1],
         expected: 'floor(1.0)',
       },
       {
         name: 'round',
-        type: AnyType,
+        type: NumberType,
         expression: ['round', 1],
         expected: 'floor(1.0 + 0.5)',
       },
       {
         name: 'ceil',
-        type: AnyType,
+        type: NumberType,
         expression: ['ceil', 1],
         expected: 'ceil(1.0)',
       },
       {
         name: 'sin',
-        type: AnyType,
+        type: NumberType,
         expression: ['sin', 1],
         expected: 'sin(1.0)',
       },
       {
         name: 'cos',
-        type: AnyType,
+        type: NumberType,
         expression: ['cos', 1],
         expected: 'cos(1.0)',
       },
       {
         name: 'atan',
-        type: AnyType,
+        type: NumberType,
         expression: ['atan', 1],
         expected: 'atan(1.0)',
       },
       {
         name: 'atan (2 params)',
-        type: AnyType,
+        type: NumberType,
         expression: ['atan', 1, 0.5],
         expected: 'atan(1.0, 0.5)',
       },
       {
         name: 'sqrt',
-        type: AnyType,
+        type: NumberType,
         expression: ['sqrt', 100],
         expected: 'sqrt(100.0)',
       },
 
       {
         name: 'greater than',
-        type: AnyType,
+        type: NumberType,
         expression: ['>', 10, ['get', 'attr4']],
         expected: '(10.0 > a_prop_attr4)',
       },
       {
         name: 'greater than or equal',
-        type: AnyType,
+        type: NumberType,
         expression: ['>=', 10, ['get', 'attr4']],
         expected: '(10.0 >= a_prop_attr4)',
       },
       {
         name: 'lower than',
-        type: AnyType,
+        type: NumberType,
         expression: ['<', 10, ['get', 'attr4']],
         expected: '(10.0 < a_prop_attr4)',
       },
       {
         name: 'lower than or equal',
-        type: AnyType,
+        type: NumberType,
         expression: ['<=', 10, ['get', 'attr4']],
         expected: '(10.0 <= a_prop_attr4)',
       },
       {
         name: 'equal',
-        type: AnyType,
+        type: NumberType,
         expression: ['==', 10, ['get', 'attr4']],
         expected: '(10.0 == a_prop_attr4)',
       },
       {
-        name: 'equal with string property',
-        type: AnyType,
-        expression: ['==', 'red', ['get', 'attr5']],
-        expected: `(${stringToGlsl('red')} == a_prop_attr5)`,
-      },
-      {
         name: 'unequal',
-        type: AnyType,
+        type: NumberType,
         expression: ['!=', 10, ['get', 'attr4']],
         expected: '(10.0 != a_prop_attr4)',
       },
       {
         name: 'all',
-        type: AnyType,
+        type: BooleanType,
         expression: ['all', true, ['get', 'attr6']],
         expected: '(true && a_prop_attr6)',
       },
       {
         name: 'any',
-        type: AnyType,
+        type: BooleanType,
         expression: ['any', true, ['get', 'attr6'], true],
         expected: '(true || a_prop_attr6 || true)',
       },
       {
         name: 'between',
-        type: AnyType,
+        type: BooleanType,
         expression: ['between', ['get', 'attr4'], -4.0, 5.0],
         expected: '(a_prop_attr4 >= -4.0 && a_prop_attr4 <= 5.0)',
       },
       {
         name: 'not',
-        type: AnyType,
+        type: BooleanType,
         expression: ['!', ['get', 'attr6']],
         expected: '(!a_prop_attr6)',
       },
       {
         name: 'array constructor',
-        type: AnyType,
+        type: NumberArrayType,
         expression: ['array', ['get', 'attr4'], 1, 2, 3],
         expected: 'vec4(a_prop_attr4, 1.0, 2.0, 3.0)',
       },
       {
         name: 'color constructor',
-        type: AnyType,
+        type: ColorType,
         expression: ['color', ['get', 'attr4'], 1, 2, 0.5],
         expected: 'vec4(a_prop_attr4 / 255.0, 1.0 / 255.0, 2.0 / 255.0, 0.5)',
       },
       {
         name: 'grayscale color',
-        type: AnyType,
+        type: ColorType,
         expression: ['color', 100],
         expected: 'vec4(vec3(100.0 / 255.0), 1.0)',
       },
       {
         name: 'grayscale color with alpha',
-        type: AnyType,
+        type: ColorType,
         expression: ['color', 100, 0.5],
         expected: 'vec4(vec3(100.0 / 255.0), 0.5)',
       },
       {
         name: 'rgb color',
-        type: AnyType,
+        type: ColorType,
         expression: ['color', 100, 150, 200],
         expected: 'vec4(100.0 / 255.0, 150.0 / 255.0, 200.0 / 255.0, 1.0)',
       },
       {
         name: 'rgb color with alpha',
-        type: AnyType,
+        type: ColorType,
         expression: ['color', 100, 150, 200, 0.5],
         expected: 'vec4(100.0 / 255.0, 150.0 / 255.0, 200.0 / 255.0, 0.5)',
       },
       {
         name: 'band',
-        type: AnyType,
+        type: NumberType,
         expression: ['band', 1],
         expected: 'getBandValue(1.0, 0.0, 0.0)',
         context: {
@@ -442,7 +439,7 @@ describe('ol/expr/gpu.js', () => {
       },
       {
         name: 'band with offsets',
-        type: AnyType,
+        type: NumberType,
         expression: ['band', 1, -1, 2],
         expected: 'getBandValue(1.0, -1.0, 2.0)',
       },
@@ -461,16 +458,32 @@ describe('ol/expr/gpu.js', () => {
           '((a_prop_attr > 3.0) ? vec4(1.0, 0.0, 0.0, 1.0) : ((a_prop_attr > 1.0) ? vec4(1.0, 1.0, 0.0, 1.0) : vec4(1.0, 1.0, 1.0, 1.0)))',
       },
       {
-        name: 'match (colors)',
+        name: 'match-number (color return)',
         type: ColorType,
-        expression: ['match', ['get', 'attr'], 0, 'red', 1, 'yellow', 'white'],
+        expression: [
+          'match-number',
+          ['get', 'attr'],
+          0,
+          'red',
+          1,
+          'yellow',
+          'white',
+        ],
         expected:
           '(a_prop_attr == 0.0 ? vec4(1.0, 0.0, 0.0, 1.0) : (a_prop_attr == 1.0 ? vec4(1.0, 1.0, 0.0, 1.0) : vec4(1.0, 1.0, 1.0, 1.0)))',
       },
       {
-        name: 'match (strings)',
+        name: 'match-number (string return)',
         type: StringType,
-        expression: ['match', ['get', 'attr'], 0, 'red', 1, 'yellow', 'white'],
+        expression: [
+          'match-number',
+          ['get', 'attr'],
+          0,
+          'red',
+          1,
+          'yellow',
+          'white',
+        ],
         expected: `(a_prop_attr == 0.0 ? ${stringToGlsl(
           'red',
         )} : (a_prop_attr == 1.0 ? ${stringToGlsl('yellow')} : ${stringToGlsl(
@@ -478,10 +491,10 @@ describe('ol/expr/gpu.js', () => {
         )}))`,
       },
       {
-        name: 'match (number arrays)',
+        name: 'match-string (number array return)',
         type: NumberArrayType,
         expression: [
-          'match',
+          'match-string',
           ['get', 'attr'],
           'low',
           [0, 0],
@@ -496,10 +509,10 @@ describe('ol/expr/gpu.js', () => {
         )} ? vec2(0.0, 1.0) : vec2(1.0, 0.0)))`,
       },
       {
-        name: 'match (larger number arrays)',
+        name: 'match-number (larger number arrays)',
         type: NumberArrayType,
         expression: [
-          'match',
+          'match-number',
           ['get', 'attr2'],
           0,
           [0, 0, 1, 1],
@@ -542,7 +555,7 @@ describe('ol/expr/gpu.js', () => {
           5000,
           10,
         ],
-        type: AnyType,
+        type: NumberType,
         expected:
           'mix(mix(-10.0, 0.0, clamp((a_prop_attr - 1000.0) / (2000.0 - 1000.0), 0.0, 1.0)), 10.0, clamp((a_prop_attr - 2000.0) / (5000.0 - 2000.0), 0.0, 1.0))',
       },
@@ -559,14 +572,14 @@ describe('ol/expr/gpu.js', () => {
           5000,
           10,
         ],
-        type: AnyType,
+        type: NumberType,
         expected:
           'mix(mix(-10.0, 0.0, clamp((pow(0.5, (a_prop_attr - 1000.0)) - 1.0) / (pow(0.5, (2000.0 - 1000.0)) - 1.0), 0.0, 1.0)), 10.0, clamp((pow(0.5, (a_prop_attr - 2000.0)) - 1.0) / (pow(0.5, (5000.0 - 2000.0)) - 1.0), 0.0, 1.0))',
       },
       {
         name: 'in (number haystack)',
         expression: ['in', ['get', 'attr'], [0, 20, 50]],
-        type: AnyType,
+        type: NumberType,
         context: {
           functions: {
             'a_function': 'float a_function() { return 1.0; }',
@@ -587,7 +600,7 @@ describe('ol/expr/gpu.js', () => {
       {
         name: 'in (string haystack)',
         expression: ['in', ['get', 'attr'], ['literal', ['abc', 'def', 'ghi']]],
-        type: AnyType,
+        type: StringType,
         expected: 'operator_in_0(a_prop_attr)',
         contextAssertion: (context) => {
           expect(context.functions['operator_in_0']).to
@@ -606,7 +619,7 @@ describe('ol/expr/gpu.js', () => {
           ['get', 'color'],
           ['red', 'rgb(0, 255, 0)', [0, 0, 255, 0.5]],
         ],
-        type: AnyType,
+        type: ColorType,
         expected:
           'texture2D(u_paletteTextures[0], vec2((a_prop_color + 0.5) / 3.0, 0.5))',
         contextAssertion: (context) => {
@@ -625,7 +638,7 @@ describe('ol/expr/gpu.js', () => {
         },
       },
       {
-        name: 'combination of interpolate, match, color and number',
+        name: 'combination of interpolate, match-number, color and number',
         type: ColorType,
         expression: [
           'interpolate',
@@ -658,20 +671,20 @@ describe('ol/expr/gpu.js', () => {
           0,
           'rgba(255, 255, 0, 0.5)',
           1,
-          ['match', ['get', 'year'], 2000, 'green', '#ffe52c'],
+          ['match-number', ['get', 'year'], 2000, 'green', '#ffe52c'],
         ],
         expected:
           'mix(vec4(1.0, 1.0, 0.0, 0.5), (a_prop_year == 2000.0 ? vec4(0.0, 0.5019607843137255, 0.0, 1.0) : vec4(1.0, 0.8980392156862745, 0.17254901960784313, 1.0)), clamp((pow((mod((u_time + mix(0.0, 8.0, clamp((a_prop_year - 1850.0) / (2015.0 - 1850.0), 0.0, 1.0))), 8.0) / 8.0), 0.5) - 0.0) / (1.0 - 0.0), 0.0, 1.0))',
       },
       {
         name: 'array for symbol size',
-        type: NumberType | NumberArrayType,
+        type: NumberArrayType,
         expression: [
           'array',
           [
             'ceil',
             [
-              'match',
+              'match-number',
               ['get', 'width'],
               0,
               ['var', 'defaultWidth'],
@@ -681,7 +694,7 @@ describe('ol/expr/gpu.js', () => {
           [
             'ceil',
             [
-              'match',
+              'match-number',
               ['get', 'height'],
               0,
               ['var', 'defaultHeight'],
@@ -703,9 +716,9 @@ describe('ol/expr/gpu.js', () => {
       {
         name: 'mix of var and get operators (color)',
         expression: [
-          'match',
+          'match-number',
           ['var', 'selected'],
-          false,
+          1,
           'red',
           ['get', 'validValue'],
           'green',
@@ -720,7 +733,7 @@ describe('ol/expr/gpu.js', () => {
         context: {
           style: {
             variables: {
-              selected: true,
+              selected: 1,
               oldColor: 'grey',
               newColor: 'white',
             },
@@ -732,13 +745,13 @@ describe('ol/expr/gpu.js', () => {
           expect(context.properties).to.eql({
             validValue: {
               name: 'validValue',
-              type: StringType | NumberType | BooleanType,
+              type: NumberType,
             },
           });
           expect(context.variables).to.eql({
             selected: {
               name: 'selected',
-              type: StringType | NumberType | BooleanType,
+              type: NumberType,
             },
             newColor: {name: 'newColor', type: ColorType},
             oldColor: {name: 'oldColor', type: ColorType},
@@ -749,11 +762,11 @@ describe('ol/expr/gpu.js', () => {
         name: 'mix of var and get operators (number array)',
         expression: [
           'case',
-          ['==', ['var', 'symbolType'], 'dynamic'],
+          ['==', ['var', 'symbolType'], 42],
           [
             'array',
             [
-              'match',
+              'match-string',
               ['get', 'type'],
               'low',
               ['var', 'lowHeight'],
@@ -770,7 +783,7 @@ describe('ol/expr/gpu.js', () => {
           style: {
             variables: {
               fixedSize: [10, 20],
-              symbolType: 'dynamic',
+              symbolType: 42,
               lowHeight: 6,
               mediumHeight: 12,
             },
@@ -782,7 +795,7 @@ describe('ol/expr/gpu.js', () => {
           expect(context.properties).to.eql({
             type: {
               name: 'type',
-              type: StringType | NumberType | BooleanType,
+              type: StringType,
             },
             height: {
               name: 'height',
@@ -796,7 +809,7 @@ describe('ol/expr/gpu.js', () => {
             },
             symbolType: {
               name: 'symbolType',
-              type: AnyType,
+              type: NumberType,
             },
             mediumHeight: {
               name: 'mediumHeight',
@@ -875,7 +888,7 @@ describe('ol/expr/gpu.js', () => {
       },
       {
         name: 'argument type unexpected (var)',
-        expression: ['var', 1234],
+        expression: ['var', false],
         exception: true,
       },
       {
@@ -929,9 +942,17 @@ describe('ol/expr/gpu.js', () => {
         exception: true,
       },
       {
-        name: 'expected type not matching actual type (match)',
+        name: 'expected type not matching actual type (match-number)',
         type: NumberType,
-        expression: ['match', ['get', 'attr'], 0, 'red', 1, 'yellow', 'green'],
+        expression: [
+          'match-number',
+          ['get', 'attr'],
+          0,
+          'red',
+          1,
+          'yellow',
+          'green',
+        ],
         exception: true,
       },
     ];

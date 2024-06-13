@@ -3,10 +3,10 @@ import Point from '../../../../../src/ol/geom/Point.js';
 import {asArray} from '../../../../../src/ol/color.js';
 import {
   computeHash,
-  packColor,
   parseLiteralStyle,
 } from '../../../../../src/ol/webgl/styleparser.js';
 import {
+  packColor,
   stringToGlsl,
   uniformNameForVariable,
 } from '../../../../../src/ol/expr/gpu.js';
@@ -1091,13 +1091,6 @@ describe('ol/webgl/styleparser', () => {
         );
         expect(parseResult.uniforms['u_var_transparent']()).to.eql(1);
       });
-    });
-  });
-
-  describe('packColor', () => {
-    it('compresses all the components of a color into a [number, number] array', () => {
-      expect(packColor(asArray('red'))).to.eql([65280, 255]);
-      expect(packColor(asArray('rgba(0, 255, 255, 0.5)'))).to.eql([255, 65408]);
     });
   });
 

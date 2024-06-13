@@ -1,7 +1,6 @@
 /**
  * @module ol/expr/expression
  */
-import {ascending} from '../array.js';
 import {fromString as colorFromString} from '../color.js';
 import {toSize} from '../size.js';
 
@@ -42,7 +41,7 @@ import {toSize} from '../size.js';
  *      Please note that the M component will be linearly interpolated between the two points composing a segment.
  *
  * * Math operators:
- *   * `['*', value1, value2, ...]` multiplies the values (either numbers or colors)
+ *   * `['*', value1, value2, ...]` multiplies the values
  *   * `['/', value1, value2]` divides `value1` by `value2`
  *   * `['+', value1, value2, ...]` adds the values
  *   * `['-', value1, value2]` subtracts `value2` from `value1`
@@ -62,11 +61,12 @@ import {toSize} from '../size.js';
  *   * `['case', condition1, output1, ...conditionN, outputN, fallback]` selects the first output whose corresponding
  *     condition evaluates to `true`. If no match is found, returns the `fallback` value.
  *     All conditions should be `boolean`, output and fallback can be any kind.
- *   * `['match', input, match1, output1, ...matchN, outputN, fallback]` compares the `input` value against all
+ *   * `['match-number', input, match1, output1, ...matchN, outputN, fallback]` compares the `input` value against all
  *     provided `matchX` values, returning the output associated with the first valid match. If no match is found,
- *     returns the `fallback` value.
- *     `input` and `matchX` values must all be of the same type, and can be `number` or `string`. `outputX` and
- *     `fallback` values must be of the same type, and can be of any kind.
+ *     returns the `fallback` value.  The `input` and `matchX` values must be numbers.
+ *   * `['match-string', input, match1, output1, ...matchN, outputN, fallback]` compares the `input` value against all
+ *     provided `matchX` values, returning the output associated with the first valid match. If no match is found,
+ *     returns the `fallback` value.  The `input` and `matchX` values must be strings.
  *   * `['interpolate', interpolation, input, stop1, output1, ...stopN, outputN]` returns a value by interpolating between
  *     pairs of inputs and outputs; `interpolation` can either be `['linear']` or `['exponential', base]` where `base` is
  *     the rate of increase from stop A to stop B (i.e. power to which the interpolation ratio is raised); a value
@@ -74,30 +74,23 @@ import {toSize} from '../size.js';
  *     `input` and `stopX` values must all be of type `number`. `outputX` values can be `number` or `color` values.
  *     Note: `input` will be clamped between `stop1` and `stopN`, meaning that all output values will be comprised
  *     between `output1` and `outputN`.
- *   * `['string', value1, value2, ...]` returns the first value in the list that evaluates to a string.
- *     An example would be to provide a default value for get: `['string', ['get', 'propertyname'], 'default value']]`
- *     (Canvas only).
- *   * `['number', value1, value2, ...]` returns the first value in the list that evaluates to a number.
- *     An example would be to provide a default value for get: `['string', ['get', 'propertyname'], 42]]`
- *     (Canvas only).
- *   * `['coalesce', value1, value2, ...]` returns the first value in the list which is not null or undefined.
- *     An example would be to provide a default value for get: `['coalesce', ['get','propertyname'], 'default value']]`
- *     (Canvas only).
  *
- * * Logical operators:
+ * * Numeric comparison operators:
  *   * `['<', value1, value2]` returns `true` if `value1` is strictly lower than `value2`, or `false` otherwise.
  *   * `['<=', value1, value2]` returns `true` if `value1` is lower than or equals `value2`, or `false` otherwise.
  *   * `['>', value1, value2]` returns `true` if `value1` is strictly greater than `value2`, or `false` otherwise.
  *   * `['>=', value1, value2]` returns `true` if `value1` is greater than or equals `value2`, or `false` otherwise.
  *   * `['==', value1, value2]` returns `true` if `value1` equals `value2`, or `false` otherwise.
  *   * `['!=', value1, value2]` returns `true` if `value1` does not equal `value2`, or `false` otherwise.
+ *   * `['between', value1, value2, value3]` returns `true` if `value1` is contained between `value2` and `value3`
+ *     (inclusively), or `false` otherwise.
+ *
+ * * Logical operators:
  *   * `['!', value1]` returns `false` if `value1` is `true` or greater than `0`, or `true` otherwise.
  *   * `['all', value1, value2, ...]` returns `true` if all the inputs are `true`, `false` otherwise.
  *   * `['any', value1, value2, ...]` returns `true` if any of the inputs are `true`, `false` otherwise.
  *   * `['has', attributeName, keyOrArrayIndex, ...]` returns `true` if feature properties include the (nested) key `attributeName`,
  *     `false` otherwise.
- *   * `['between', value1, value2, value3]` returns `true` if `value1` is contained between `value2` and `value3`
- *     (inclusively), or `false` otherwise.
  *   * `['in', needle, haystack]` returns `true` if `needle` is found in `haystack`, and
  *     `false` otherwise.
  *     This operator has the following limitations:
@@ -117,9 +110,6 @@ import {toSize} from '../size.js';
  *     (e.g. `'#86A136'`), colors using the rgba[a] functional notation (e.g. `'rgb(134, 161, 54)'` or `'rgba(134, 161, 54, 1)'`),
  *     named colors (e.g. `'red'`), or array literals with 3 ([r, g, b]) or 4 ([r, g, b, a]) values (with r, g, and b
  *     in the 0-255 range and a in the 0-1 range) (WebGL only).
- *   * `['to-string', value]` converts the input value to a string. If the input is a boolean, the result is "true" or "false".
- *     If the input is a number, it is converted to a string as specified by the "NumberToString" algorithm of the ECMAScript
- *     Language Specification. If the input is a color, it is converted to a string of the form "rgba(r,g,b,a)". (Canvas only)
  *
  * Values can either be literals or another operator, as they will be evaluated recursively.
  * Literal values can be of the following types:
@@ -133,82 +123,16 @@ import {toSize} from '../size.js';
  * @api
  */
 
-let numTypes = 0;
-export const NoneType = 0;
-export const BooleanType = 1 << numTypes++;
-export const NumberType = 1 << numTypes++;
-export const StringType = 1 << numTypes++;
-export const ColorType = 1 << numTypes++;
-export const NumberArrayType = 1 << numTypes++;
-export const SizeType = 1 << numTypes++;
-export const AnyType = Math.pow(2, numTypes) - 1;
-
-const typeNames = {
-  [BooleanType]: 'boolean',
-  [NumberType]: 'number',
-  [StringType]: 'string',
-  [ColorType]: 'color',
-  [NumberArrayType]: 'number[]',
-  [SizeType]: 'size',
-};
-
-const namedTypes = Object.keys(typeNames).map(Number).sort(ascending);
+export const BooleanType = 'boolean';
+export const NumberType = 'number';
+export const StringType = 'string';
+export const ColorType = 'color';
+export const NumberArrayType = 'number[]';
+export const SizeType = 'size';
 
 /**
- * @param {number} type The type.
- * @return {boolean} The type is one of the specific types (not any or a union type).
+ * @typedef {'boolean'|'number'|'string'|'color'|'number[]'|'size'} Type
  */
-function isSpecific(type) {
-  return type in typeNames;
-}
-
-/**
- * Get a string representation for a type.
- * @param {number} type The type.
- * @return {string} The type name.
- */
-export function typeName(type) {
-  const names = [];
-  for (const namedType of namedTypes) {
-    if (includesType(type, namedType)) {
-      names.push(typeNames[namedType]);
-    }
-  }
-  if (names.length === 0) {
-    return 'untyped';
-  }
-  if (names.length < 3) {
-    return names.join(' or ');
-  }
-  return names.slice(0, -1).join(', ') + ', or ' + names[names.length - 1];
-}
-
-/**
- * @param {number} broad The broad type.
- * @param {number} specific The specific type.
- * @return {boolean} The broad type includes the specific type.
- */
-export function includesType(broad, specific) {
-  return (broad & specific) === specific;
-}
-
-/**
- * @param {number} oneType One type.
- * @param {number} otherType Another type.
- * @return {boolean} The set of types overlap (share a common specific type)
- */
-export function overlapsType(oneType, otherType) {
-  return !!(oneType & otherType);
-}
-
-/**
- * @param {number} type The type.
- * @param {number} expected The expected type.
- * @return {boolean} The given type is exactly the expected type.
- */
-export function isType(type, expected) {
-  return type === expected;
-}
 
 /**
  * @typedef {boolean|number|string|Array<number>} LiteralValue
@@ -216,15 +140,10 @@ export function isType(type, expected) {
 
 export class LiteralExpression {
   /**
-   * @param {number} type The value type.
+   * @param {Type} type The value type.
    * @param {LiteralValue} value The literal value.
    */
   constructor(type, value) {
-    if (!isSpecific(type)) {
-      throw new Error(
-        `literal expressions must have a specific type, got ${typeName(type)}`,
-      );
-    }
     this.type = type;
     this.value = value;
   }
@@ -232,7 +151,7 @@ export class LiteralExpression {
 
 export class CallExpression {
   /**
-   * @param {number} type The return type.
+   * @param {Type} type The return type.
    * @param {string} operator The operator.
    * @param {...Expression} args The arguments.
    */
@@ -248,126 +167,167 @@ export class CallExpression {
  */
 
 /**
+ * @typedef {Object} PreAccessorInfo
+ * @property {string} slug A unique identifier for the accessor.
+ * @property {Array<string|number>} path The path to the value.
+ * @property {Type} type The value type.
+ * @property {LiteralValue} [default] The fallback value.
+ */
+
+/**
+ * @typedef {Object} PostAccessorInfo
+ * @property {LiteralValue} value The resolved value.
+ * @property {Type} type The value type.
+ * @property {string} slug A unique identifier for the accessor.
+ */
+
+/**
+ * @typedef {Object} AccessorOptions
+ * @property {LiteralValue} [default] Fallback value.
+ */
+
+/**
  * @typedef {Object} ParsingContext
- * @property {Set<string>} variables Variables referenced with the 'var' operator.
- * @property {Set<string>} properties Properties referenced with the 'get' operator.
+ * @property {Object<string, PreAccessorInfo>} variables Information about values referenced with the 'var' operator.
+ * @property {Object<string, PreAccessorInfo>} properties Information about values referenced with the 'get' operator.
  * @property {boolean} featureId The style uses the feature id.
  * @property {boolean} geometryType The style uses the feature geometry type.
  */
+
+/**
+ * @param {Array<string|number>} path The path to the value.
+ * @param {Type} type The value type.
+ * @param {AccessorOptions} options The accessor options.
+ * @return {string} The key for the accessor.
+ */
+export function keyForAccessor(path, type, options) {
+  const config = {path, type};
+  if ('default' in options) {
+    config.default = options.default;
+  }
+  return JSON.stringify(config);
+}
 
 /**
  * @return {ParsingContext} A new parsing context.
  */
 export function newParsingContext() {
   return {
-    variables: new Set(),
-    properties: new Set(),
+    variables: {},
+    properties: {},
     featureId: false,
     geometryType: false,
   };
 }
 
 /**
- * @typedef {LiteralValue|Array} EncodedExpression
+ * @typedef {LiteralValue|Array|Object} EncodedExpression
  */
 
 /**
  * @param {EncodedExpression} encoded The encoded expression.
- * @param {number} expectedType The expected type.
+ * @param {Type} expectedType The expected type.
  * @param {ParsingContext} context The parsing context.
  * @return {Expression} The parsed expression result.
  */
 export function parse(encoded, expectedType, context) {
-  switch (typeof encoded) {
-    case 'boolean': {
-      if (isType(expectedType, StringType)) {
-        return new LiteralExpression(StringType, encoded ? 'true' : 'false');
-      }
-      if (!includesType(expectedType, BooleanType)) {
-        throw new Error(
-          `got a boolean, but expected ${typeName(expectedType)}`,
-        );
-      }
-      return new LiteralExpression(BooleanType, encoded);
+  if (Array.isArray(encoded)) {
+    if (encoded.length === 0) {
+      throw new Error('empty expression');
     }
-    case 'number': {
-      if (isType(expectedType, SizeType)) {
-        return new LiteralExpression(SizeType, toSize(encoded));
-      }
-      if (isType(expectedType, BooleanType)) {
-        return new LiteralExpression(BooleanType, !!encoded);
-      }
-      if (isType(expectedType, StringType)) {
-        return new LiteralExpression(StringType, encoded.toString());
-      }
-      if (!includesType(expectedType, NumberType)) {
-        throw new Error(`got a number, but expected ${typeName(expectedType)}`);
-      }
-      return new LiteralExpression(NumberType, encoded);
+    if (typeof encoded[0] === 'string') {
+      return parseCallExpression(encoded, expectedType, context);
     }
-    case 'string': {
-      if (isType(expectedType, ColorType)) {
+  }
+
+  return parseLiteralExpression(encoded, expectedType);
+}
+
+/**
+ * @param {any} encoded A value.
+ * @param {Type} expectedType The desired type.
+ * @return {LiteralExpression} A literal expression.
+ */
+export function parseLiteralExpression(encoded, expectedType) {
+  switch (expectedType) {
+    case BooleanType: {
+      if (typeof encoded === 'boolean') {
+        return new LiteralExpression(BooleanType, encoded);
+      }
+      return new LiteralExpression(BooleanType, Boolean(encoded));
+    }
+    case StringType: {
+      if (typeof encoded === 'string') {
+        return new LiteralExpression(StringType, encoded);
+      }
+      return new LiteralExpression(StringType, String(encoded));
+    }
+    case NumberType: {
+      if (typeof encoded === 'number') {
+        return new LiteralExpression(NumberType, encoded);
+      }
+      const value = Number(encoded);
+      if (Number.isNaN(value)) {
+        throw new Error('expected a number');
+      }
+      return new LiteralExpression(NumberType, Number(encoded));
+    }
+    case NumberArrayType: {
+      if (!Array.isArray(encoded)) {
+        throw new Error('expected an array of numbers');
+      }
+      for (const item of encoded) {
+        if (typeof item !== 'number') {
+          throw new Error('expected an array of numbers');
+        }
+      }
+      return new LiteralExpression(NumberArrayType, encoded);
+    }
+    case ColorType: {
+      if (typeof encoded === 'string') {
         return new LiteralExpression(ColorType, colorFromString(encoded));
       }
-      if (isType(expectedType, BooleanType)) {
-        return new LiteralExpression(BooleanType, !!encoded);
+      if (!Array.isArray(encoded)) {
+        throw new Error('expected a string or an array of numbers');
       }
-      if (!includesType(expectedType, StringType)) {
-        throw new Error(`got a string, but expected ${typeName(expectedType)}`);
+      for (const item of encoded) {
+        if (typeof item !== 'number') {
+          throw new Error('expected an array of numbers');
+        }
       }
-      return new LiteralExpression(StringType, encoded);
-    }
-    default: {
-      // pass
-    }
-  }
-
-  if (!Array.isArray(encoded)) {
-    throw new Error('expression must be an array or a primitive value');
-  }
-
-  if (encoded.length === 0) {
-    throw new Error('empty expression');
-  }
-
-  if (typeof encoded[0] === 'string') {
-    return parseCallExpression(encoded, expectedType, context);
-  }
-
-  for (const item of encoded) {
-    if (typeof item !== 'number') {
-      throw new Error('expected an array of numbers');
-    }
-  }
-
-  if (isType(expectedType, SizeType)) {
-    if (encoded.length !== 2) {
+      if (encoded.length === 3) {
+        return new LiteralExpression(ColorType, [...encoded, 1]);
+      }
+      if (encoded.length === 4) {
+        return new LiteralExpression(ColorType, encoded);
+      }
       throw new Error(
-        `expected an array of two values for a size, got ${encoded.length}`,
+        `expected an array of 3 or 4 values for a color, got ${encoded.length}`,
       );
     }
-    return new LiteralExpression(SizeType, encoded);
-  }
-
-  if (isType(expectedType, ColorType)) {
-    if (encoded.length === 3) {
-      return new LiteralExpression(ColorType, [...encoded, 1]);
+    case SizeType: {
+      if (typeof encoded === 'number') {
+        return new LiteralExpression(SizeType, toSize(encoded));
+      }
+      if (!Array.isArray(encoded)) {
+        throw new Error('expected a number or an array of numbers');
+      }
+      if (encoded.length !== 2) {
+        throw new Error(
+          `expected an array of two values for a size, got ${encoded.length}`,
+        );
+      }
+      for (const item of encoded) {
+        if (typeof item !== 'number') {
+          throw new Error('expected an array of numbers');
+        }
+      }
+      return new LiteralExpression(SizeType, encoded);
     }
-    if (encoded.length === 4) {
-      return new LiteralExpression(ColorType, encoded);
+    default: {
+      throw new Error('unsupported type: ' + expectedType);
     }
-    throw new Error(
-      `expected an array of 3 or 4 values for a color, got ${encoded.length}`,
-    );
   }
-
-  if (!includesType(expectedType, NumberArrayType)) {
-    throw new Error(
-      `got an array of numbers, but expected ${typeName(expectedType)}`,
-    );
-  }
-
-  return new LiteralExpression(NumberArrayType, encoded);
 }
 
 /**
@@ -406,25 +366,22 @@ export const Ops = {
   Cos: 'cos',
   Atan: 'atan',
   Sqrt: 'sqrt',
-  Match: 'match',
+  MatchNumber: 'match-number',
+  MatchString: 'match-string',
   Between: 'between',
   Interpolate: 'interpolate',
-  Coalesce: 'coalesce',
   Case: 'case',
   In: 'in',
-  Number: 'number',
-  String: 'string',
   Array: 'array',
   Color: 'color',
   Id: 'id',
   Band: 'band',
   Palette: 'palette',
-  ToString: 'to-string',
   Has: 'has',
 };
 
 /**
- * @typedef {function(Array, number, ParsingContext):Expression} Parser
+ * @typedef {function(Array, Type, ParsingContext):Expression} Parser
  *
  * Second argument is the expected type.
  */
@@ -434,8 +391,8 @@ export const Ops = {
  */
 const parsers = {
   [Ops.Get]: createCallExpressionParser(hasArgsCount(1, Infinity), withGetArgs),
-  [Ops.Var]: createCallExpressionParser(hasArgsCount(1, 1), withVarArgs),
   [Ops.Has]: createCallExpressionParser(hasArgsCount(1, Infinity), withGetArgs),
+  [Ops.Var]: createCallExpressionParser(hasArgsCount(1, Infinity), withVarArgs),
   [Ops.Id]: createCallExpressionParser(usesFeatureId, withNoArgs),
   [Ops.Concat]: createCallExpressionParser(
     hasArgsCount(2, Infinity),
@@ -460,11 +417,11 @@ const parsers = {
   ),
   [Ops.Equal]: createCallExpressionParser(
     hasArgsCount(2, 2),
-    withArgsOfType(AnyType),
+    withArgsOfType(NumberType),
   ),
   [Ops.NotEqual]: createCallExpressionParser(
     hasArgsCount(2, 2),
-    withArgsOfType(AnyType),
+    withArgsOfType(NumberType),
   ),
   [Ops.GreaterThan]: createCallExpressionParser(
     hasArgsCount(2, 2),
@@ -484,11 +441,7 @@ const parsers = {
   ),
   [Ops.Multiply]: createCallExpressionParser(
     hasArgsCount(2, Infinity),
-    withArgsOfReturnType,
-  ),
-  [Ops.Coalesce]: createCallExpressionParser(
-    hasArgsCount(2, Infinity),
-    withArgsOfReturnType,
+    withArgsOfType(NumberType),
   ),
   [Ops.Divide]: createCallExpressionParser(
     hasArgsCount(2, 2),
@@ -546,10 +499,15 @@ const parsers = {
     hasArgsCount(1, 1),
     withArgsOfType(NumberType),
   ),
-  [Ops.Match]: createCallExpressionParser(
+  [Ops.MatchString]: createCallExpressionParser(
     hasArgsCount(4, Infinity),
     hasEvenArgs,
-    withMatchArgs,
+    withMatchArgs(StringType),
+  ),
+  [Ops.MatchNumber]: createCallExpressionParser(
+    hasArgsCount(4, Infinity),
+    hasEvenArgs,
+    withMatchArgs(NumberType),
   ),
   [Ops.Between]: createCallExpressionParser(
     hasArgsCount(3, 3),
@@ -566,14 +524,6 @@ const parsers = {
     withCaseArgs,
   ),
   [Ops.In]: createCallExpressionParser(hasArgsCount(2, 2), withInArgs),
-  [Ops.Number]: createCallExpressionParser(
-    hasArgsCount(1, Infinity),
-    withArgsOfType(AnyType),
-  ),
-  [Ops.String]: createCallExpressionParser(
-    hasArgsCount(1, Infinity),
-    withArgsOfType(AnyType),
-  ),
   [Ops.Array]: createCallExpressionParser(
     hasArgsCount(1, Infinity),
     withArgsOfType(NumberType),
@@ -590,60 +540,92 @@ const parsers = {
     hasArgsCount(2, 2),
     withPaletteArgs,
   ),
-  [Ops.ToString]: createCallExpressionParser(
-    hasArgsCount(1, 1),
-    withArgsOfType(BooleanType | NumberType | StringType | ColorType),
-  ),
 };
 
 /**
- * @typedef {function(Array<EncodedExpression>, number, ParsingContext):Array<Expression>|void} ArgValidator
+ * @param {Array} encoded The encoded expression.
+ * @param {Type} returnType The expected return type of the call expression.
+ * @param {ParsingContext} context The parsing context.
+ * @return {Expression} The parsed expression.
+ */
+function parseCallExpression(encoded, returnType, context) {
+  const operator = encoded[0];
+
+  const parser = parsers[operator];
+  if (!parser) {
+    throw new Error(`unknown operator: ${operator}`);
+  }
+  return parser(encoded, returnType, context);
+}
+
+/**
+ * @typedef {function(Array<EncodedExpression>, Type, ParsingContext):Array<Expression>|void} ArgValidator
  *
  * An argument validator applies various checks to an encoded expression arguments and
  * returns the parsed arguments if any.  The second argument is the return type of the call expression.
  */
 
 /**
- * @type ArgValidator
+ * @param {Array<EncodedExpression>} encoded The encoded expression.
+ * @param {Type} type The return type.
+ * @param {Object<string, PreAccessorInfo>} infoLookup Lookup of accessor info.
+ * @return {Array<Expression>} The parsed arguments.
  */
-function withGetArgs(encoded, returnType, context) {
+function withAccessorArgs(encoded, type, infoLookup) {
   const argsCount = encoded.length - 1;
-  const args = new Array(argsCount);
+  /**
+   * @type {AccessorOptions}
+   */
+  let options = {};
+  const path = [];
   for (let i = 0; i < argsCount; ++i) {
     const key = encoded[i + 1];
-    switch (typeof key) {
-      case 'number': {
-        args[i] = new LiteralExpression(NumberType, key);
-        break;
-      }
-      case 'string': {
-        args[i] = new LiteralExpression(StringType, key);
-        break;
-      }
-      default: {
-        throw new Error(
-          `expected a string key or numeric array index for a get operation, got ${key}`,
-        );
-      }
+    const keyType = typeof key;
+    if (keyType === 'number' || keyType === 'string') {
+      path.push(key);
+      continue;
     }
-    if (i === 0) {
-      context.properties.add(String(key));
+    if (
+      i < argsCount - 1 ||
+      !key ||
+      Array.isArray(key) ||
+      keyType !== 'object'
+    ) {
+      throw new Error(
+        `expected a string key or numeric array index for a get operation, got ${key}`,
+      );
     }
+    options = key;
   }
+
+  const key = keyForAccessor(path, type, options);
+  const args = [new LiteralExpression(StringType, key)];
+
+  if (key in infoLookup) {
+    return args;
+  }
+  const count = Object.keys(infoLookup).length;
+  const slug = path.join('_') + '_' + count;
+  const info = {path, type, slug};
+  if ('default' in options) {
+    info.default = options.default;
+  }
+  infoLookup[key] = info;
   return args;
 }
 
 /**
  * @type ArgValidator
  */
-function withVarArgs(encoded, returnType, context) {
-  const name = encoded[1];
-  if (typeof name !== 'string') {
-    throw new Error('expected a string argument for var operation');
-  }
-  context.variables.add(name);
+function withGetArgs(encoded, type, context) {
+  return withAccessorArgs(encoded, type, context.properties);
+}
 
-  return [new LiteralExpression(StringType, name)];
+/**
+ * @type ArgValidator
+ */
+function withVarArgs(encoded, type, context) {
+  return withAccessorArgs(encoded, type, context.variables);
 }
 
 /**
@@ -716,7 +698,7 @@ function withArgsOfReturnType(encoded, returnType, context) {
 }
 
 /**
- * @param {number} argType The argument type.
+ * @param {Type} argType The argument type.
  * @return {ArgValidator} The argument validator
  */
 function withArgsOfType(argType) {
@@ -761,38 +743,39 @@ function hasEvenArgs(encoded, returnType, context) {
 }
 
 /**
- * @type ArgValidator
+ * @param {Type} inputType The input and match type.
+ * @return {ArgValidator} The argument validator.
  */
-function withMatchArgs(encoded, returnType, context) {
-  const argsCount = encoded.length - 1;
+function withMatchArgs(inputType) {
+  return function (encoded, returnType, context) {
+    const argsCount = encoded.length - 1;
 
-  const inputType = StringType | NumberType | BooleanType;
+    const input = parse(encoded[1], inputType, context);
 
-  const input = parse(encoded[1], inputType, context);
+    const fallback = parse(encoded[encoded.length - 1], returnType, context);
 
-  const fallback = parse(encoded[encoded.length - 1], returnType, context);
-
-  const args = new Array(argsCount - 2);
-  for (let i = 0; i < argsCount - 2; i += 2) {
-    try {
-      const match = parse(encoded[i + 2], input.type, context);
-      args[i] = match;
-    } catch (err) {
-      throw new Error(
-        `failed to parse argument ${i + 1} of match expression: ${err.message}`,
-      );
+    const args = new Array(argsCount - 2);
+    for (let i = 0; i < argsCount - 2; i += 2) {
+      try {
+        const match = parse(encoded[i + 2], input.type, context);
+        args[i] = match;
+      } catch (err) {
+        throw new Error(
+          `failed to parse argument ${i + 1} of match expression: ${err.message}`,
+        );
+      }
+      try {
+        const output = parse(encoded[i + 3], fallback.type, context);
+        args[i + 1] = output;
+      } catch (err) {
+        throw new Error(
+          `failed to parse argument ${i + 2} of match expression: ${err.message}`,
+        );
+      }
     }
-    try {
-      const output = parse(encoded[i + 3], fallback.type, context);
-      args[i + 1] = output;
-    } catch (err) {
-      throw new Error(
-        `failed to parse argument ${i + 2} of match expression: ${err.message}`,
-      );
-    }
-  }
 
-  return [input, ...args, fallback];
+    return [input, ...args, fallback];
+  };
 }
 
 /**
@@ -899,7 +882,7 @@ function withInArgs(encoded, returnType, context) {
     );
   }
   /**
-   * @type {number}
+   * @type {Type}
    */
   let needleType;
   if (typeof haystack[0] === 'string') {
@@ -1000,22 +983,6 @@ function createCallExpressionParser(...validators) {
 }
 
 /**
- * @param {Array} encoded The encoded expression.
- * @param {number} returnType The expected return type of the call expression.
- * @param {ParsingContext} context The parsing context.
- * @return {Expression} The parsed expression.
- */
-function parseCallExpression(encoded, returnType, context) {
-  const operator = encoded[0];
-
-  const parser = parsers[operator];
-  if (!parser) {
-    throw new Error(`unknown operator: ${operator}`);
-  }
-  return parser(encoded, returnType, context);
-}
-
-/**
  * Returns a simplified geometry type suited for the `geometry-type` operator
  * @param {import('../geom/Geometry.js').default|import('../render/Feature.js').default} geometry Geometry object
  * @return {'Point'|'LineString'|'Polygon'|''} Simplified geometry type; empty string of no geometry found
@@ -1045,4 +1012,48 @@ export function computeGeometryType(geometry) {
     default:
       return '';
   }
+}
+
+/**
+ * Given an object with all (potentially nested) values and a lookup with accessor details from parsing, select
+ * the values needed for evaluation, flatten any nested structures, and cast values to the expected type.
+ * @param {Object<string, any>} values Potentially nested values (e.g. feature properties or style variables).
+ * @param {Object<string, PreAccessorInfo>} infoLookup Lookup of accessor details extracted during parsing.
+ * @return {Object<string, PostAccessorInfo>} Flattened values for use during evaluation.
+ */
+export function processAccessorValues(values, infoLookup) {
+  /**
+   * @type {Object<string, PostAccessorInfo>}
+   */
+  const processedValues = {};
+  for (const accessorKey in infoLookup) {
+    const info = infoLookup[accessorKey];
+    let absent = true;
+    let value = values;
+    for (const key of info.path) {
+      if (!value || !Object.hasOwn(value, key)) {
+        absent = true;
+        break;
+      }
+      absent = false;
+      value = value[key];
+    }
+
+    if (!absent) {
+      const expression = parseLiteralExpression(value, info.type);
+      processedValues[accessorKey] = {
+        type: expression.type,
+        value: expression.value,
+        slug: info.slug,
+      };
+    } else if ('default' in info) {
+      const expression = parseLiteralExpression(info.default, info.type);
+      processedValues[accessorKey] = {
+        type: expression.type,
+        value: expression.value,
+        slug: info.slug,
+      };
+    }
+  }
+  return processedValues;
 }
