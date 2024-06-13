@@ -2,6 +2,20 @@
 
 ### Next release
 
+#### Backwards incompatible changes
+
+##### Flat styles
+
+The `match` operator has been replaced by `match-string` and `match-number`.  If you were previously using `match` with numbers, use `match-number` instead.  If you were previously using `match` with strings, use `match-string` instead.
+
+The `*` operator now only works with numbers.  Previously, it accepted colors as well.
+
+The `==` operator now only works with numbers.  Previously, it accepted strings as well.
+
+The `to-string` operator has been removed.  Values will be cast to strings when used in expressions that expect a string.
+
+The `string`, `number`, and `coalesce` operators have been removed.  These operators were useful in combination with `get` expressions when feature property values were missing.  The `get` operator now accepts a `default` value as an alternative.  See below for more detail.
+
 ### 10.0.0
 
 #### Backwards incompatible changes

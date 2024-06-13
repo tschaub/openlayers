@@ -22,8 +22,8 @@ import {
 
 /**
  * @typedef {Object} EvaluationContext
- * @property {Object} properties The values for properties used in 'get' expressions.
- * @property {Object} variables The values for variables used in 'var' expressions.
+ * @property {Object<string, import('./expression.js').PostAccessorInfo>} properties The values for properties used in 'get' expressions.
+ * @property {Object<string, import('./expression.js').PostAccessorInfo>} variables The values for variables used in 'var' expressions.
  * @property {number} resolution The map resolution.
  * @property {string|number|null} featureId The feature id.
  * @property {string} geometryType Geometry type of the current object.
@@ -80,7 +80,7 @@ export function newEvaluationContext() {
 
 /**
  * @param {import('./expression.js').EncodedExpression} encoded The encoded expression.
- * @param {number} type The expected type.
+ * @param {import('./expression.js').Type} type The expected type.
  * @param {import('./expression.js').ParsingContext} context The parsing context.
  * @return {ExpressionEvaluator} The expression evaluator.
  */
@@ -109,11 +109,6 @@ function compileExpression(expression, context) {
   }
   const operator = expression.operator;
   switch (operator) {
-    case Ops.Number:
-    case Ops.String:
-    case Ops.Coalesce: {
-      return compileAssertionExpression(expression, context);
-    }
     case Ops.Get:
     case Ops.Var:
     case Ops.Has: {
@@ -168,14 +163,12 @@ function compileExpression(expression, context) {
     case Ops.Case: {
       return compileCaseExpression(expression, context);
     }
-    case Ops.Match: {
+    case Ops.MatchNumber:
+    case Ops.MatchString: {
       return compileMatchExpression(expression, context);
     }
     case Ops.Interpolate: {
       return compileInterpolateExpression(expression, context);
-    }
-    case Ops.ToString: {
-      return compileConvertExpression(expression, context);
     }
     default: {
       throw new Error(`Unsupported operator ${operator}`);
@@ -195,85 +188,27 @@ function compileExpression(expression, context) {
  * @param {import('./expression.js').ParsingContext} context The parsing context.
  * @return {ExpressionEvaluator} The evaluator function.
  */
-function compileAssertionExpression(expression, context) {
-  const type = expression.operator;
-  const length = expression.args.length;
-
-  const args = new Array(length);
-  for (let i = 0; i < length; ++i) {
-    args[i] = compileExpression(expression.args[i], context);
-  }
-  switch (type) {
-    case Ops.Coalesce: {
-      return (context) => {
-        for (let i = 0; i < length; ++i) {
-          const value = args[i](context);
-          if (typeof value !== 'undefined' && value !== null) {
-            return value;
-          }
-        }
-        throw new Error('Expected one of the values to be non-null');
-      };
-    }
-    case Ops.Number:
-    case Ops.String: {
-      return (context) => {
-        for (let i = 0; i < length; ++i) {
-          const value = args[i](context);
-          if (typeof value === type) {
-            return value;
-          }
-        }
-        throw new Error(`Expected one of the values to be a ${type}`);
-      };
-    }
-    default: {
-      throw new Error(`Unsupported assertion operator ${type}`);
-    }
-  }
-}
-
-/**
- * @param {import('./expression.js').CallExpression} expression The call expression.
- * @param {import('./expression.js').ParsingContext} context The parsing context.
- * @return {ExpressionEvaluator} The evaluator function.
- */
 function compileAccessorExpression(expression, context) {
-  const nameExpression = /** @type {LiteralExpression} */ (expression.args[0]);
-  const name = /** @type {string} */ (nameExpression.value);
+  const keyArg = expression.args[0];
+  if (
+    !(keyArg instanceof LiteralExpression) ||
+    typeof keyArg.value !== 'string'
+  ) {
+    throw new Error(
+      `expected a literal string argument for accessor expression, got ${keyArg}`,
+    );
+  }
+
+  const key = keyArg.value;
   switch (expression.operator) {
     case Ops.Get: {
-      return (context) => {
-        const args = expression.args;
-        let value = context.properties[name];
-        for (let i = 1, ii = args.length; i < ii; ++i) {
-          const keyExpression = /** @type {LiteralExpression} */ (args[i]);
-          const key = /** @type {string|number} */ (keyExpression.value);
-          value = value[key];
-        }
-        return value;
-      };
-    }
-    case Ops.Var: {
-      return (context) => context.variables[name];
+      return (context) => context.properties[key]?.value;
     }
     case Ops.Has: {
-      return (context) => {
-        const args = expression.args;
-        if (!(name in context.properties)) {
-          return false;
-        }
-        let value = context.properties[name];
-        for (let i = 1, ii = args.length; i < ii; ++i) {
-          const keyExpression = /** @type {LiteralExpression} */ (args[i]);
-          const key = /** @type {string|number} */ (keyExpression.value);
-          if (!value || !Object.hasOwn(value, key)) {
-            return false;
-          }
-          value = value[key];
-        }
-        return true;
-      };
+      return (context) => Object.hasOwn(context.properties, key);
+    }
+    case Ops.Var: {
+      return (context) => context.variables[key]?.value;
     }
     default: {
       throw new Error(`Unsupported accessor operator ${expression.operator}`);
@@ -564,35 +499,6 @@ function compileInterpolateExpression(expression, context) {
     }
     return previousOutput;
   };
-}
-
-/**
- * @param {import('./expression.js').CallExpression} expression The call expression.
- * @param {import('./expression.js').ParsingContext} context The parsing context.
- * @return {ExpressionEvaluator} The evaluator function.
- */
-function compileConvertExpression(expression, context) {
-  const op = expression.operator;
-  const length = expression.args.length;
-
-  const args = new Array(length);
-  for (let i = 0; i < length; ++i) {
-    args[i] = compileExpression(expression.args[i], context);
-  }
-  switch (op) {
-    case Ops.ToString: {
-      return (context) => {
-        const value = args[0](context);
-        if (expression.args[0].type === ColorType) {
-          return toString(value);
-        }
-        return value.toString();
-      };
-    }
-    default: {
-      throw new Error(`Unsupported convert operator ${op}`);
-    }
-  }
 }
 
 /**

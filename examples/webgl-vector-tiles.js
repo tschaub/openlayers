@@ -6,7 +6,8 @@ import View from '../src/ol/View.js';
 import WebGLVectorTileLayerRenderer from '../src/ol/renderer/webgl/VectorTileLayer.js';
 import {Fill, Icon, Stroke, Style, Text} from '../src/ol/style.js';
 import {asArray} from '../src/ol/color.js';
-import {packColor, parseLiteralStyle} from '../src/ol/webgl/styleparser.js';
+import {packColor} from '../src/ol/expr/gpu.js';
+import {parseLiteralStyle} from '../src/ol/webgl/styleparser.js';
 
 const key =
   'pk.eyJ1IjoiYWhvY2V2YXIiLCJhIjoiY2t0cGdwMHVnMGdlbzMxbDhwazBic2xrNSJ9.WbcTL9uj8JPAsnT9mgb7oQ';
