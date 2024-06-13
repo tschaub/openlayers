@@ -6,6 +6,7 @@ import {
   NumberType,
   StringType,
   newParsingContext,
+  processAccessorValues,
 } from '../../../../src/ol/expr/expression.js';
 import {
   buildExpression,
@@ -18,7 +19,11 @@ describe('ol/expr/cpu.js', () => {
      * @typedef {Object} Case
      * @property {string} name The case name.
      * @property {import('../../../../src/ol/expr/expression.js').EncodedExpression} expression The encoded expression.
-     * @property {import('../../../../src/ol/expr/cpu.js').EvaluationContext} [context] The evaluation context.
+     * @property {Object<string, any>} [featureProperties] The feature properties.
+     * @property {Object<string, any>} [variables] Style variables.
+     * @property {string|number} [featureId] The feature id.
+     * @property {string} [geometryType] The geometry type.
+     * @property {number} [resolution] The resolution.
      * @property {number} type The expression type.
      * @property {import('../../../../src/ol/expr/expression.js').LiteralValue} expected The expected value.
      * @property {number} [tolerance] Optional tolerance for numeric comparisons.
@@ -29,192 +34,248 @@ describe('ol/expr/cpu.js', () => {
      */
     const cases = [
       {
-        name: 'get',
-        context: {
-          properties: {
-            property: 42,
-          },
-        },
+        name: 'get (number)',
         expression: ['get', 'property'],
+        featureProperties: {
+          property: 42,
+        },
         type: NumberType,
         expected: 42,
+      },
+      {
+        name: 'get (number default)',
+        expression: ['get', 'property', {default: 100}],
+        featureProperties: {},
+        type: NumberType,
+        expected: 100,
       },
       {
         name: 'get (nested)',
-        context: {
-          properties: {
-            deeply: {nested: {property: 42}},
+        expression: ['get', 'deeply', 'nested', 'property'],
+        featureProperties: {
+          deeply: {
+            nested: {
+              property: 42,
+            },
           },
         },
-        expression: ['get', 'deeply', 'nested', 'property'],
         type: NumberType,
         expected: 42,
       },
       {
-        name: 'get number (excess key)',
-        context: {
-          properties: {
-            property: 42,
+        name: 'get (nested default)',
+        expression: ['get', 'deeply', 'nested', 'property', {default: 100}],
+        featureProperties: {
+          deeply: {
+            nested: {},
           },
         },
+        type: NumberType,
+        expected: 100,
+      },
+      {
+        name: 'get number (excess key)',
         expression: ['get', 'property', 'nothing_here'],
+        featureProperties: {
+          property: 42,
+        },
         type: NumberType,
         expected: undefined,
       },
       {
         name: 'get array item',
-        context: {
-          properties: {
-            values: [17, 42],
-          },
-        },
         expression: ['get', 'values', 1],
+        featureProperties: {
+          values: [17, 42],
+        },
         type: NumberType,
         expected: 42,
       },
       {
         name: 'get array',
-        context: {
-          properties: {
-            values: [17, 42],
-          },
-        },
         expression: ['get', 'values'],
+        featureProperties: {
+          values: [17, 42],
+        },
         type: NumberArrayType,
         expected: [17, 42],
       },
       {
+        name: 'get color',
+        expression: ['get', 'color'],
+        featureProperties: {
+          color: 'red',
+        },
+        type: ColorType,
+        expected: [255, 0, 0, 1],
+      },
+      {
+        name: 'get color default',
+        expression: ['get', 'nope', {default: 'blue'}],
+        featureProperties: {
+          color: 'red',
+        },
+        type: ColorType,
+        expected: [0, 0, 255, 1],
+      },
+      {
+        name: 'var (number)',
+        expression: ['var', 'property'],
+        variables: {
+          property: 42,
+        },
+        type: NumberType,
+        expected: 42,
+      },
+      {
+        name: 'var (number default)',
+        expression: ['var', 'property', {default: 100}],
+        variables: {},
+        type: NumberType,
+        expected: 100,
+      },
+      {
+        name: 'var (deeply nested string)',
+        expression: ['var', 'deeply', 'nested', 'property'],
+        variables: {
+          deeply: {
+            nested: {
+              property: 'foo',
+            },
+          },
+        },
+        type: StringType,
+        expected: 'foo',
+      },
+      {
+        name: 'var (deeply nested color)',
+        expression: ['var', 'deeply', 'nested', 'property'],
+        variables: {
+          deeply: {
+            nested: {
+              property: 'fuchsia',
+            },
+          },
+        },
+        type: ColorType,
+        expected: [255, 0, 255, 1],
+      },
+      {
         name: 'boolean literal (true)',
-        type: BooleanType,
         expression: true,
+        type: BooleanType,
         expected: true,
       },
       {
         name: 'boolean literal (false)',
-        type: BooleanType,
         expression: false,
+        type: BooleanType,
         expected: false,
       },
       {
         name: 'number assertion',
-        type: NumberType,
         expression: ['number', 'not', 'a', 'number', 42, false],
+        type: NumberType,
         expected: 42,
       },
       {
         name: 'string assertion',
-        type: StringType,
         expression: ['string', 42, 'chicken', false],
+        type: StringType,
         expected: 'chicken',
       },
       {
         name: 'id (number)',
         type: NumberType,
         expression: ['id'],
-        context: {
-          featureId: 42,
-        },
+        featureId: 42,
         expected: 42,
       },
       {
         name: 'id (string)',
         type: StringType,
         expression: ['id'],
-        context: {
-          featureId: 'forty-two',
-        },
+        featureId: 'forty-two',
         expected: 'forty-two',
       },
       {
         name: 'geometry-type',
         type: StringType,
         expression: ['geometry-type'],
-        context: {
-          geometryType: 'LineString',
-        },
+        geometryType: 'LineString',
         expected: 'LineString',
       },
       {
         name: 'geometry-type (empty)',
         type: StringType,
         expression: ['geometry-type'],
-        context: {
-          geometryType: '',
-        },
+        geometryType: '',
         expected: '',
       },
       {
         name: 'resolution',
-        type: NumberType,
         expression: ['resolution'],
-        context: {
-          resolution: 10,
-        },
+        resolution: 10,
+        type: NumberType,
         expected: 10,
       },
       {
         name: 'resolution (comparison)',
-        type: BooleanType,
         expression: ['>', ['resolution'], 10],
-        context: {
-          resolution: 11,
-        },
+        resolution: 11,
+        type: BooleanType,
         expected: true,
       },
       {
         name: 'concat (2 arguments)',
-        type: StringType,
         expression: ['concat', ['get', 'val'], ' '],
-        context: {
-          properties: {val: 'test'},
+        featureProperties: {
+          val: 'test',
         },
+        type: StringType,
         expected: 'test ',
       },
       {
         name: 'concat (3 arguments)',
-        type: StringType,
         expression: ['concat', ['get', 'val'], ' ', ['get', 'val2']],
-        context: {
-          properties: {val: 'test', val2: 'another'},
+        featureProperties: {
+          val: 'test',
+          val2: 'another',
         },
+        type: StringType,
         expected: 'test another',
       },
       {
         name: 'concat (with id)',
-        type: StringType,
         expression: ['concat', 'Feature ', ['id']],
-        context: {
-          featureId: 'foo',
-        },
+        featureId: 'foo',
+        type: StringType,
         expected: 'Feature foo',
       },
       {
         name: 'concat (with string and number)',
-        type: StringType,
         expression: ['concat', 'number ', 1],
+        type: StringType,
         expected: 'number 1',
       },
       {
         name: 'coalesce (2 arguments, first has a value)',
-        type: StringType,
         expression: ['coalesce', ['get', 'val'], 'default'],
-        context: {
-          properties: {val: 'test'},
+        featureProperties: {
+          val: 'test',
         },
+        type: StringType,
         expected: 'test',
       },
       {
         name: 'coalesce (2 arguments, first has no value)',
-        type: StringType,
         expression: ['coalesce', ['get', 'val'], 'default'],
-        context: {
-          properties: {},
-        },
+        featureProperties: {},
+        type: StringType,
         expected: 'default',
       },
       {
         name: 'coalesce (several arguments, first few have no value)',
-        type: StringType,
         expression: [
           'coalesce',
           ['get', 'val'],
@@ -222,332 +283,272 @@ describe('ol/expr/cpu.js', () => {
           ['get', 'present'],
           'last resort',
         ],
-        context: {
-          properties: {present: 'hello world'},
+        featureProperties: {
+          present: 'hello world',
         },
+        type: StringType,
         expected: 'hello world',
       },
       {
         name: 'any (true)',
-        type: BooleanType,
         expression: ['any', ['get', 'nope'], ['get', 'yep'], ['get', 'nope']],
-        context: {
-          properties: {nope: false, yep: true},
-        },
+        featureProperties: {nope: false, yep: true},
+        type: BooleanType,
         expected: true,
       },
       {
         name: 'any (false)',
-        type: BooleanType,
         expression: ['any', ['get', 'nope'], false, ['!', ['get', 'yep']]],
-        context: {
-          properties: {nope: false, yep: true},
-        },
+        featureProperties: {nope: false, yep: true},
+        type: BooleanType,
         expected: false,
       },
       {
         name: 'all (true)',
-        type: BooleanType,
         expression: ['all', ['get', 'yep'], true, ['!', ['get', 'nope']]],
-        context: {
-          properties: {yep: true, nope: false},
-        },
+        featureProperties: {yep: true, nope: false},
+        type: BooleanType,
         expected: true,
       },
       {
         name: 'all (false)',
-        type: BooleanType,
         expression: ['all', ['!', ['get', 'nope']], ['get', 'yep'], false],
-        context: {
-          properties: {nope: false, yep: true},
-        },
+        featureProperties: {nope: false, yep: true},
+        type: BooleanType,
         expected: false,
       },
       {
         name: 'not (true)',
-        type: BooleanType,
         expression: ['!', ['get', 'nope']],
-        context: {
-          properties: {nope: false, yep: true},
-        },
+        featureProperties: {nope: false, yep: true},
+        type: BooleanType,
         expected: true,
       },
       {
         name: 'not (false)',
-        type: BooleanType,
         expression: ['!', ['get', 'yep']],
-        context: {
-          properties: {nope: false, yep: true},
-        },
+        featureProperties: {nope: false, yep: true},
+        type: BooleanType,
         expected: false,
       },
       {
         name: 'equal comparison (true)',
-        type: BooleanType,
         expression: ['==', ['get', 'number'], 42],
-        context: {
-          properties: {number: 42},
-        },
+        featureProperties: {number: 42},
+        type: BooleanType,
         expected: true,
       },
       {
         name: 'equal comparison (false)',
-        type: BooleanType,
         expression: ['==', ['get', 'number'], 1],
-        context: {
-          properties: {number: 42},
-        },
+        featureProperties: {number: 42},
+        type: BooleanType,
         expected: false,
       },
       {
         name: 'greater than comparison (true)',
         type: BooleanType,
         expression: ['>', ['get', 'number'], 40],
-        context: {
-          properties: {number: 42},
-        },
+        featureProperties: {number: 42},
         expected: true,
       },
       {
         name: 'greater than comparison (false)',
-        type: BooleanType,
         expression: ['>', ['get', 'number'], 44],
-        context: {
-          properties: {number: 42},
-        },
+        featureProperties: {number: 42},
+        type: BooleanType,
         expected: false,
       },
       {
         name: 'greater than or equal comparison (true)',
-        type: BooleanType,
         expression: ['>=', ['get', 'number'], 42],
-        context: {
-          properties: {number: 42},
-        },
+        featureProperties: {number: 42},
+        type: BooleanType,
         expected: true,
       },
       {
         name: 'greater than or equal comparison (false)',
-        type: BooleanType,
         expression: ['>=', ['get', 'number'], 43],
-        context: {
-          properties: {number: 42},
-        },
+        featureProperties: {number: 42},
+        type: BooleanType,
         expected: false,
       },
       {
         name: 'less than comparison (true)',
-        type: BooleanType,
         expression: ['<', ['get', 'number'], 44],
-        context: {
-          properties: {number: 42},
-        },
+        featureProperties: {number: 42},
+        type: BooleanType,
         expected: true,
       },
       {
         name: 'less than comparison (false)',
-        type: BooleanType,
         expression: ['<', ['get', 'number'], 1],
-        context: {
-          properties: {number: 42},
-        },
+        featureProperties: {number: 42},
+        type: BooleanType,
         expected: false,
       },
       {
         name: 'less than or equal comparison (true)',
-        type: BooleanType,
         expression: ['<=', ['get', 'number'], 42],
-        context: {
-          properties: {number: 42},
-        },
+        featureProperties: {number: 42},
+        type: BooleanType,
         expected: true,
       },
       {
         name: 'less than or equal comparison (false)',
-        type: BooleanType,
         expression: ['<=', ['get', 'number'], 41],
-        context: {
-          properties: {number: 42},
-        },
+        featureProperties: {number: 42},
+        type: BooleanType,
         expected: false,
       },
       {
         name: 'addition',
-        type: NumberType,
         expression: ['+', ['get', 'number'], 1],
-        context: {
-          properties: {number: 42},
-        },
+        featureProperties: {number: 42},
+        type: NumberType,
         expected: 43,
       },
       {
         name: 'addition (many values)',
-        type: NumberType,
         expression: ['+', 1, 2, 3, 4],
+        type: NumberType,
         expected: 1 + 2 + 3 + 4,
       },
       {
         name: 'subtraction',
-        type: NumberType,
         expression: ['-', ['get', 'number'], 1],
-        context: {
-          properties: {number: 42},
-        },
+        featureProperties: {number: 42},
+        type: NumberType,
         expected: 41,
       },
       {
         name: 'subtraction',
-        type: NumberType,
         expression: ['-', ['get', 'number'], 1],
-        context: {
-          properties: {number: 42},
-        },
+        featureProperties: {number: 42},
+        type: NumberType,
         expected: 41,
       },
       {
         name: 'multiplication',
-        type: NumberType,
         expression: ['*', ['get', 'number'], 2],
-        context: {
-          properties: {number: 42},
-        },
+        featureProperties: {number: 42},
+        type: NumberType,
         expected: 84,
       },
       {
         name: 'multiplication (many values)',
-        type: NumberType,
         expression: ['*', 2, 4, 6, 8],
+        type: NumberType,
         expected: 2 * 4 * 6 * 8,
       },
       {
         name: 'division',
-        type: NumberType,
         expression: ['/', ['get', 'number'], 2],
-        context: {
-          properties: {number: 42},
-        },
+        featureProperties: {number: 42},
+        type: NumberType,
         expected: 21,
       },
       {
         name: 'clamp (min)',
-        type: NumberType,
         expression: ['clamp', -10, 0, 50],
+        type: NumberType,
         expected: 0,
       },
       {
         name: 'clamp (max)',
-        type: NumberType,
         expression: ['clamp', 100, 0, 50],
+        type: NumberType,
         expected: 50,
       },
       {
         name: 'clamp (mid)',
-        type: NumberType,
         expression: ['clamp', 25, 0, 50],
+        type: NumberType,
         expected: 25,
       },
       {
         name: 'clamp (mid)',
-        type: NumberType,
         expression: ['clamp', 25, 0, 50],
+        type: NumberType,
         expected: 25,
       },
       {
         name: 'mod',
-        type: NumberType,
         expression: ['%', ['get', 'number'], 10],
-        context: {
-          properties: {number: 42},
-        },
+        featureProperties: {number: 42},
+        type: NumberType,
         expected: 2,
       },
       {
         name: 'pow',
-        type: NumberType,
         expression: ['^', ['get', 'number'], 2],
-        context: {
-          properties: {number: 42},
-        },
+        featureProperties: {number: 42},
+        type: NumberType,
         expected: 1764,
       },
       {
         name: 'abs',
-        type: NumberType,
         expression: ['abs', ['get', 'number']],
-        context: {
-          properties: {number: -42},
-        },
+        featureProperties: {number: -42},
+        type: NumberType,
         expected: 42,
       },
       {
         name: 'floor',
-        type: NumberType,
         expression: ['floor', ['get', 'number']],
-        context: {
-          properties: {number: 42.9},
-        },
+        featureProperties: {number: 42.9},
+        type: NumberType,
         expected: 42,
       },
       {
         name: 'ceil',
-        type: NumberType,
         expression: ['ceil', ['get', 'number']],
-        context: {
-          properties: {number: 42.1},
-        },
+        featureProperties: {number: 42.1},
+        type: NumberType,
         expected: 43,
       },
       {
         name: 'round',
-        type: NumberType,
         expression: ['round', ['get', 'number']],
-        context: {
-          properties: {number: 42.5},
-        },
+        featureProperties: {number: 42.5},
+        type: NumberType,
         expected: 43,
       },
       {
         name: 'sin',
-        type: NumberType,
         expression: ['sin', ['get', 'angle']],
-        context: {
-          properties: {angle: Math.PI / 2},
-        },
+        featureProperties: {angle: Math.PI / 2},
+        type: NumberType,
         expected: 1,
       },
       {
         name: 'cos',
-        type: NumberType,
         expression: ['cos', ['get', 'angle']],
-        context: {
-          properties: {angle: Math.PI},
-        },
+        featureProperties: {angle: Math.PI},
+        type: NumberType,
         expected: -1,
       },
       {
         name: 'atan (1)',
-        type: NumberType,
         expression: ['atan', 1],
+        type: NumberType,
         expected: Math.atan(1),
       },
       {
         name: 'atan (2)',
-        type: NumberType,
         expression: ['atan', 1, 2],
+        type: NumberType,
         expected: Math.atan2(1, 2),
       },
       {
         name: 'sqrt',
-        type: NumberType,
         expression: ['sqrt', ['get', 'number']],
-        context: {
-          properties: {number: 42},
-        },
+        featureProperties: {number: 42},
+        type: NumberType,
         expected: Math.sqrt(42),
       },
       {
         name: 'case (first condition)',
-        type: StringType,
         expression: [
           'case',
           ['<', ['get', 'value'], 42],
@@ -556,14 +557,12 @@ describe('ol/expr/cpu.js', () => {
           'big',
           'bigger',
         ],
-        context: {
-          properties: {value: 40},
-        },
+        featureProperties: {value: 40},
+        type: StringType,
         expected: 'small',
       },
       {
         name: 'case (second condition)',
-        type: StringType,
         expression: [
           'case',
           ['<', ['get', 'value'], 42],
@@ -572,14 +571,12 @@ describe('ol/expr/cpu.js', () => {
           'big',
           'bigger',
         ],
-        context: {
-          properties: {value: 50},
-        },
+        featureProperties: {value: 50},
+        type: StringType,
         expected: 'big',
       },
       {
         name: 'case (fallback)',
-        type: StringType,
         expression: [
           'case',
           ['<', ['get', 'value'], 42],
@@ -588,50 +585,42 @@ describe('ol/expr/cpu.js', () => {
           'big',
           'biggest',
         ],
-        context: {
-          properties: {value: 200},
-        },
+        featureProperties: {value: 200},
+        type: StringType,
         expected: 'biggest',
       },
       {
         name: 'match (string match)',
-        type: StringType,
         expression: ['match', ['get', 'string'], 'foo', 'got foo', 'got other'],
-        context: {
-          properties: {string: 'foo'},
-        },
+        featureProperties: {string: 'foo'},
+        type: StringType,
         expected: 'got foo',
       },
       {
         name: 'match (string fallback)',
-        type: StringType,
         expression: ['match', ['get', 'string'], 'foo', 'got foo', 'got other'],
-        context: {
-          properties: {string: 'bar'},
-        },
+        featureProperties: {string: 'bar'},
+        type: StringType,
         expected: 'got other',
       },
       {
         name: 'match (number match)',
-        type: StringType,
         expression: ['match', ['get', 'number'], 42, 'got 42', 'got other'],
-        context: {
-          properties: {number: 42},
+        featureProperties: {
+          number: 42,
         },
+        type: StringType,
         expected: 'got 42',
       },
       {
         name: 'match (number fallback)',
-        type: StringType,
         expression: ['match', ['get', 'number'], 42, 'got 42', 'got other'],
-        context: {
-          properties: {number: 43},
-        },
+        featureProperties: {number: 43},
+        type: StringType,
         expected: 'got other',
       },
       {
         name: 'interpolate (linear number)',
-        type: NumberType,
         expression: [
           'interpolate',
           ['linear'],
@@ -641,79 +630,76 @@ describe('ol/expr/cpu.js', () => {
           1,
           100,
         ],
-        context: {
-          properties: {number: 0.5},
-        },
+        featureProperties: {number: 0.5},
+        type: NumberType,
         expected: 50,
       },
       {
         name: 'interpolate (exponential base 2 number)',
-        type: NumberType,
         expression: ['interpolate', ['exponential', 2], 0.5, 0, 0, 1, 100],
-        expected: 41.42135623730952,
+        type: NumberType,
         tolerance: 1e-6,
+        expected: 41.42135623730952,
       },
       {
         name: 'interpolate (linear no delta)',
-        type: NumberType,
         expression: ['interpolate', ['linear'], 42, 42, 1, 42, 2],
+        type: NumberType,
         expected: 1,
       },
       {
         name: 'interpolate (linear color)',
-        type: ColorType,
         expression: ['interpolate', ['linear'], 0.5, 0, 'red', 1, [0, 255, 0]],
+        type: ColorType,
         expected: [219, 170, 0, 1],
       },
       {
         name: 'to-string (string)',
-        type: StringType,
         expression: ['to-string', 'foo'],
+        type: StringType,
         expected: 'foo',
       },
       {
         name: 'to-string (number)',
-        type: StringType,
         expression: ['to-string', 42.9],
+        type: StringType,
         expected: '42.9',
       },
       {
         name: 'to-string (boolean)',
-        type: StringType,
         expression: ['to-string', 1 < 2],
+        type: StringType,
         expected: 'true',
       },
       {
         name: 'to-string (array)',
-        type: StringType,
         expression: ['to-string', ['get', 'fill']],
-        context: {
-          properties: {fill: [0, 255, 0]},
-        },
+        featureProperties: {fill: [0, 255, 0]},
+        type: StringType,
         expected: '0,255,0',
       },
       {
         name: 'in (true)',
-        type: BooleanType,
         expression: ['in', 3, [1, 2, 3]],
+        type: BooleanType,
         expected: true,
       },
       {
         name: 'in (false)',
-        type: BooleanType,
         expression: ['in', 'yellow', ['literal', ['red', 'green', 'blue']]],
+        type: BooleanType,
         expected: false,
       },
       {
         name: 'between (true)',
-        type: BooleanType,
         expression: ['between', 3, 3, 5],
+        type: BooleanType,
         expected: true,
       },
       {
         name: 'between (false)',
-        type: BooleanType,
         expression: ['between', 3, 4, 5],
+        type: BooleanType,
         expected: false,
       },
     ];
@@ -722,7 +708,28 @@ describe('ol/expr/cpu.js', () => {
       it(`works for ${c.name}`, () => {
         const parsingContext = newParsingContext();
         const evaluator = buildExpression(c.expression, c.type, parsingContext);
-        const evaluationContext = c.context || newEvaluationContext();
+        const evaluationContext = newEvaluationContext();
+        if (c.featureProperties) {
+          evaluationContext.properties = processAccessorValues(
+            c.featureProperties,
+            parsingContext.properties,
+          );
+        }
+        if (c.variables) {
+          evaluationContext.variables = processAccessorValues(
+            c.variables,
+            parsingContext.variables,
+          );
+        }
+        if ('featureId' in c) {
+          evaluationContext.featureId = c.featureId;
+        }
+        if ('geometryType' in c) {
+          evaluationContext.geometryType = c.geometryType;
+        }
+        if ('resolution' in c) {
+          evaluationContext.resolution = c.resolution;
+        }
         const value = evaluator(evaluationContext);
         if (c.tolerance !== undefined) {
           expect(value).to.roughlyEqual(c.expected, c.tolerance);
@@ -804,7 +811,10 @@ describe('ol/expr/cpu.js', () => {
         const evaluationContext = newEvaluationContext();
         for (const [input, output] of t.cases) {
           it(`works for ${input}`, () => {
-            evaluationContext.variables.input = input;
+            evaluationContext.variables = processAccessorValues(
+              {input},
+              parsingContext.variables,
+            );
             const got = evaluator(evaluationContext);
             expect(got).to.roughlyEqual(output, 1e-6);
           });

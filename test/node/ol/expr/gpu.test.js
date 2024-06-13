@@ -18,8 +18,10 @@ import {
   getStringNumberEquivalent,
   newCompilationContext,
   numberToGlsl,
+  packColor,
   stringToGlsl,
 } from '../../../../src/ol/expr/gpu.js';
+import {asArray} from '../../../../src/ol/color.js';
 
 describe('ol/expr/gpu.js', () => {
   describe('numberToGlsl()', () => {
@@ -29,6 +31,13 @@ describe('ol/expr/gpu.js', () => {
     it('adds a fraction separator when missing', () => {
       expect(numberToGlsl(1)).to.eql('1.0');
       expect(numberToGlsl(2.0)).to.eql('2.0');
+    });
+  });
+
+  describe('packColor()', () => {
+    it('compresses all the components of a color into a [number, number] array', () => {
+      expect(packColor(asArray('red'))).to.eql([65280, 255]);
+      expect(packColor(asArray('rgba(0, 255, 255, 0.5)'))).to.eql([255, 65408]);
     });
   });
 
@@ -871,7 +880,7 @@ describe('ol/expr/gpu.js', () => {
       },
       {
         name: 'argument type unexpected (var)',
-        expression: ['var', 1234],
+        expression: ['var', false],
         exception: true,
       },
       {

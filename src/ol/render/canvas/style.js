@@ -17,6 +17,7 @@ import {
   StringType,
   computeGeometryType,
   newParsingContext,
+  processAccessorValues,
 } from '../../expr/expression.js';
 import {buildExpression, newEvaluationContext} from '../../expr/cpu.js';
 import {isEmpty} from '../../obj.js';
@@ -75,7 +76,13 @@ export function rulesToStyleFunction(rules) {
   const evaluator = buildRuleSet(rules, parsingContext);
   const evaluationContext = newEvaluationContext();
   return function (feature, resolution) {
-    evaluationContext.properties = feature.getPropertiesInternal();
+    // add requested feature properties to evaluation context
+    const featureProperties = feature.getPropertiesInternal();
+    evaluationContext.properties = processAccessorValues(
+      featureProperties,
+      parsingContext.properties,
+    );
+
     evaluationContext.resolution = resolution;
     if (parsingContext.featureId) {
       const id = feature.getId();

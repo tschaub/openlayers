@@ -16,6 +16,7 @@ import {
   arrayToGlsl,
   buildExpression,
   getStringNumberEquivalent,
+  packColor,
   stringToGlsl,
   uniformNameForVariable,
 } from '../expr/gpu.js';
@@ -37,20 +38,6 @@ export function expressionToGlsl(compilationContext, value, expectedType) {
     parsingContext,
     compilationContext,
   );
-}
-
-/**
- * Packs all components of a color into a two-floats array
- * @param {import("../color.js").Color|string} color Color as array of numbers or string
- * @return {Array<number>} Vec2 array containing the color in compressed form
- */
-export function packColor(color) {
-  const array = asArray(color);
-  const r = array[0] * 256;
-  const g = array[1];
-  const b = array[2] * 256;
-  const a = Math.round(array[3] * 255);
-  return [r + g, b + a];
 }
 
 const UNPACK_COLOR_FN = `vec4 unpackColor(vec2 packedColor) {

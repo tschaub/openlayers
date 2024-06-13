@@ -243,27 +243,61 @@ export class CallExpression {
  */
 
 /**
+ * @typedef {Object} PreAccessorInfo
+ * @property {string} slug A unique identifier for the accessor.
+ * @property {Array<string|number>} path The path to the value.
+ * @property {number} type The value type.
+ * @property {LiteralValue} [default] The fallback value.
+ */
+
+/**
+ * @typedef {Object} PostAccessorInfo
+ * @property {LiteralValue} value The resolved value.
+ * @property {number} type The value type.
+ * @property {string} slug A unique identifier for the accessor.
+ */
+
+/**
+ * @typedef {Object} AccessorOptions
+ * @property {LiteralValue} [default] Fallback value.
+ */
+
+/**
  * @typedef {Object} ParsingContext
- * @property {Set<string>} variables Variables referenced with the 'var' operator.
- * @property {Set<string>} properties Properties referenced with the 'get' operator.
+ * @property {Object<string, PreAccessorInfo>} variables Information about values referenced with the 'var' operator.
+ * @property {Object<string, PreAccessorInfo>} properties Information about values referenced with the 'get' operator.
  * @property {boolean} featureId The style uses the feature id.
  * @property {boolean} geometryType The style uses the feature geometry type.
  */
+
+/**
+ * @param {Array<string|number>} path The path to the value.
+ * @param {number} type The value type.
+ * @param {AccessorOptions} options The accessor options.
+ * @return {string} The key for the accessor.
+ */
+export function keyForAccessor(path, type, options) {
+  const config = {path, type};
+  if ('default' in options) {
+    config.default = options.default;
+  }
+  return JSON.stringify(config);
+}
 
 /**
  * @return {ParsingContext} A new parsing context.
  */
 export function newParsingContext() {
   return {
-    variables: new Set(),
-    properties: new Set(),
+    variables: {},
+    properties: {},
     featureId: false,
     geometryType: false,
   };
 }
 
 /**
- * @typedef {LiteralValue|Array} EncodedExpression
+ * @typedef {LiteralValue|Array|Object} EncodedExpression
  */
 
 /**
@@ -273,6 +307,24 @@ export function newParsingContext() {
  * @return {Expression} The parsed expression result.
  */
 export function parse(encoded, expectedType, context) {
+  if (Array.isArray(encoded)) {
+    if (encoded.length === 0) {
+      throw new Error('empty expression');
+    }
+    if (typeof encoded[0] === 'string') {
+      return parseCallExpression(encoded, expectedType, context);
+    }
+  }
+
+  return parseLiteralExpression(encoded, expectedType);
+}
+
+/**
+ * @param {any} encoded A value.
+ * @param {number} expectedType The desired type.
+ * @return {LiteralExpression} A literal expression.
+ */
+export function parseLiteralExpression(encoded, expectedType) {
   switch (typeof encoded) {
     case 'boolean': {
       if (isType(expectedType, StringType)) {
@@ -319,14 +371,6 @@ export function parse(encoded, expectedType, context) {
 
   if (!Array.isArray(encoded)) {
     throw new Error('expression must be an array or a primitive value');
-  }
-
-  if (encoded.length === 0) {
-    throw new Error('empty expression');
-  }
-
-  if (typeof encoded[0] === 'string') {
-    return parseCallExpression(encoded, expectedType, context);
   }
 
   for (const item of encoded) {
@@ -427,7 +471,7 @@ export const Ops = {
  */
 const parsers = {
   [Ops.Get]: createCallExpressionParser(hasArgsCount(1, Infinity), withGetArgs),
-  [Ops.Var]: createCallExpressionParser(hasArgsCount(1, 1), withVarArgs),
+  [Ops.Var]: createCallExpressionParser(hasArgsCount(1, Infinity), withVarArgs),
   [Ops.Id]: createCallExpressionParser(usesFeatureId, withNoArgs),
   [Ops.Concat]: createCallExpressionParser(
     hasArgsCount(2, Infinity),
@@ -583,9 +627,25 @@ const parsers = {
   ),
   [Ops.ToString]: createCallExpressionParser(
     hasArgsCount(1, 1),
-    withArgsOfType(BooleanType | NumberType | StringType | ColorType),
+    withArgsOfType(AnyType),
   ),
 };
+
+/**
+ * @param {Array} encoded The encoded expression.
+ * @param {number} returnType The expected return type of the call expression.
+ * @param {ParsingContext} context The parsing context.
+ * @return {Expression} The parsed expression.
+ */
+function parseCallExpression(encoded, returnType, context) {
+  const operator = encoded[0];
+
+  const parser = parsers[operator];
+  if (!parser) {
+    throw new Error(`unknown operator: ${operator}`);
+  }
+  return parser(encoded, returnType, context);
+}
 
 /**
  * @typedef {function(Array<EncodedExpression>, number, ParsingContext):Array<Expression>|void} ArgValidator
@@ -595,46 +655,66 @@ const parsers = {
  */
 
 /**
- * @type ArgValidator
+ * @param {Array<EncodedExpression>} encoded The encoded expression.
+ * @param {number} type The return type.
+ * @param {Object<string, PreAccessorInfo>} infoLookup Lookup of accessor info.
+ * @return {Array<Expression>} The parsed arguments.
  */
-function withGetArgs(encoded, returnType, context) {
+function withAccessorArgs(encoded, type, infoLookup) {
   const argsCount = encoded.length - 1;
-  const args = new Array(argsCount);
+  /**
+   * @type {AccessorOptions}
+   */
+  let options = {};
+  const path = [];
   for (let i = 0; i < argsCount; ++i) {
     const key = encoded[i + 1];
-    switch (typeof key) {
-      case 'number': {
-        args[i] = new LiteralExpression(NumberType, key);
-        break;
-      }
-      case 'string': {
-        args[i] = new LiteralExpression(StringType, key);
-        break;
-      }
-      default: {
-        throw new Error(
-          `expected a string key or numeric array index for a get operation, got ${key}`,
-        );
-      }
+    const keyType = typeof key;
+    if (keyType === 'number' || keyType === 'string') {
+      path.push(key);
+      continue;
     }
-    if (i === 0) {
-      context.properties.add(String(key));
+    if (
+      i < argsCount - 1 ||
+      !key ||
+      Array.isArray(key) ||
+      keyType !== 'object'
+    ) {
+      throw new Error(
+        `expected a string key or numeric array index for a get operation, got ${key}`,
+      );
     }
+    options = key;
   }
+
+  const key = keyForAccessor(path, type, options);
+  const args = [new LiteralExpression(StringType, key)];
+
+  if (key in infoLookup) {
+    return args;
+  }
+  const count = Object.keys(infoLookup).length;
+  const slug = path.join('_') + '_' + count;
+  const info = {path, type, slug};
+  if ('default' in options) {
+    info.default = options.default;
+  }
+  infoLookup[key] = info;
   return args;
 }
 
 /**
  * @type ArgValidator
  */
-function withVarArgs(encoded, returnType, context) {
-  const name = encoded[1];
-  if (typeof name !== 'string') {
-    throw new Error('expected a string argument for var operation');
-  }
-  context.variables.add(name);
+function withGetArgs(encoded, type, context) {
+  return withAccessorArgs(encoded, type, context.properties);
+}
 
-  return [new LiteralExpression(StringType, name)];
+/**
+ * @type ArgValidator
+ */
+function withVarArgs(encoded, type, context) {
+  return withAccessorArgs(encoded, type, context.variables);
 }
 
 /**
@@ -991,22 +1071,6 @@ function createCallExpressionParser(...validators) {
 }
 
 /**
- * @param {Array} encoded The encoded expression.
- * @param {number} returnType The expected return type of the call expression.
- * @param {ParsingContext} context The parsing context.
- * @return {Expression} The parsed expression.
- */
-function parseCallExpression(encoded, returnType, context) {
-  const operator = encoded[0];
-
-  const parser = parsers[operator];
-  if (!parser) {
-    throw new Error(`unknown operator: ${operator}`);
-  }
-  return parser(encoded, returnType, context);
-}
-
-/**
  * Returns a simplified geometry type suited for the `geometry-type` operator
  * @param {import('../geom/Geometry.js').default|import('../render/Feature.js').default} geometry Geometry object
  * @return {'Point'|'LineString'|'Polygon'|''} Simplified geometry type; empty string of no geometry found
@@ -1036,4 +1100,48 @@ export function computeGeometryType(geometry) {
     default:
       return '';
   }
+}
+
+/**
+ * Given an object with all (potentially nested) values and a lookup with accessor details from parsing, select
+ * the values needed for evaluation, flatten any nested structures, and cast values to the expected type.
+ * @param {Object<string, any>} values Potentially nested values (e.g. feature properties or style variables).
+ * @param {Object<string, PreAccessorInfo>} infoLookup Lookup of accessor details extracted during parsing.
+ * @return {Object<string, PostAccessorInfo>} Flattened values for use during evaluation.
+ */
+export function processAccessorValues(values, infoLookup) {
+  /**
+   * @type {Object<string, PostAccessorInfo>}
+   */
+  const processedValues = {};
+  for (const accessorKey in infoLookup) {
+    const info = infoLookup[accessorKey];
+    let absent = true;
+    let value = values;
+    for (const key of info.path) {
+      if (!value || !value.hasOwnProperty(key)) {
+        absent = true;
+        break;
+      }
+      absent = false;
+      value = value[key];
+    }
+
+    if (!absent) {
+      const expression = parseLiteralExpression(value, info.type);
+      processedValues[accessorKey] = {
+        type: expression.type,
+        value: expression.value,
+        slug: info.slug,
+      };
+    } else if ('default' in info) {
+      const expression = parseLiteralExpression(info.default, info.type);
+      processedValues[accessorKey] = {
+        type: expression.type,
+        value: expression.value,
+        slug: info.slug,
+      };
+    }
+  }
+  return processedValues;
 }
