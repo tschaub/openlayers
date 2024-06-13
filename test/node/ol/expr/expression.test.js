@@ -13,6 +13,7 @@ import {
   computeGeometryType,
   includesType,
   isType,
+  keyForAccessor,
   newParsingContext,
   parse,
   typeName,
@@ -128,33 +129,148 @@ describe('ol/expr/expression.js', () => {
 
     it('parses a get expression', () => {
       const context = newParsingContext();
-      const expression = parse(['get', 'foo'], AnyType, context);
+      const type = AnyType;
+      const path = ['foo'];
+      const expression = parse(['get', ...path], type, context);
       expect(expression).to.be.a(CallExpression);
       expect(expression.operator).to.be('get');
-      expect(isType(expression.type, AnyType)).to.be(true);
-      expect(context.properties.has('foo')).to.be(true);
+      expect(isType(expression.type, type)).to.be(true);
+      const key = keyForAccessor(path, type, {});
+      expect(context.properties).to.have.property(key);
+      const details = context.properties[key];
+      expect(details.path).to.eql(path);
+      expect(details.type).to.be(type);
+      expect(details.slug).to.be('foo_0');
+    });
+
+    it('parses a get expression with default', () => {
+      const context = newParsingContext();
+      const type = NumberType;
+      const path = ['foo'];
+      const options = {default: 42};
+      const expression = parse(['get', ...path, options], type, context);
+      expect(expression).to.be.a(CallExpression);
+      expect(expression.operator).to.be('get');
+      expect(isType(expression.type, type)).to.be(true);
+      const key = keyForAccessor(path, type, options);
+      expect(context.properties).to.have.property(key);
+      const details = context.properties[key];
+      expect(details.path).to.eql(path);
+      expect(details.type).to.be(type);
+      expect(details.slug).to.be('foo_0');
+      expect(details.default).to.be(42);
+    });
+
+    it('parses a deeply nested get expression', () => {
+      const context = newParsingContext();
+      const type = StringType;
+      const path = ['chicken', 'soup'];
+      const expression = parse(['get', ...path], type, context);
+      expect(expression).to.be.a(CallExpression);
+      expect(expression.operator).to.be('get');
+      expect(isType(expression.type, type)).to.be(true);
+      const key = keyForAccessor(path, type, {});
+      expect(context.properties).to.have.property(key);
+      const details = context.properties[key];
+      expect(details.path).to.eql(path);
+      expect(details.type).to.be(type);
+      expect(details.slug).to.be('chicken_soup_0');
+    });
+
+    it('parses a deeply nested get expression with default', () => {
+      const context = newParsingContext();
+      const type = StringType;
+      const path = ['chicken', 'soup'];
+      const options = {default: 'yum'};
+      const expression = parse(['get', ...path, options], type, context);
+      expect(expression).to.be.a(CallExpression);
+      expect(expression.operator).to.be('get');
+      expect(isType(expression.type, type)).to.be(true);
+      const key = keyForAccessor(path, type, options);
+      expect(context.properties).to.have.property(key);
+      const details = context.properties[key];
+      expect(details.path).to.eql(path);
+      expect(details.type).to.be(type);
+      expect(details.slug).to.be('chicken_soup_0');
+      expect(details.default).to.be('yum');
     });
 
     it('parses a var expression', () => {
       const context = newParsingContext();
-      const expression = parse(['var', 'foo'], AnyType, context);
+      const path = ['foo'];
+      const type = NumberType;
+      const expression = parse(['var', ...path], type, context);
       expect(expression).to.be.a(CallExpression);
       expect(expression.operator).to.be('var');
-      expect(isType(expression.type, AnyType)).to.be(true);
-      expect(context.variables.has('foo')).to.be(true);
+      expect(isType(expression.type, type)).to.be(true);
+      expect(context.variables).to.have.property(
+        keyForAccessor(path, type, {}),
+      );
+    });
+
+    it('parses a var expression with default', () => {
+      const context = newParsingContext();
+      const path = ['foo'];
+      const type = NumberType;
+      const options = {default: 100};
+      const expression = parse(['var', ...path, options], type, context);
+      expect(expression).to.be.a(CallExpression);
+      expect(expression.operator).to.be('var');
+      expect(isType(expression.type, type)).to.be(true);
+      const key = keyForAccessor(path, type, options);
+      expect(context.variables).to.have.property(key);
+      const details = context.variables[key];
+      expect(details.path).to.eql(path);
+      expect(details.type).to.be(type);
+      expect(details.slug).to.be('foo_0');
+      expect(details.default).to.be(100);
+    });
+
+    it('parses a deeply nested var expression', () => {
+      const context = newParsingContext();
+      const path = ['foo', 'bar', 42, 'bam'];
+      const type = ColorType;
+      const expression = parse(['var', ...path], type, context);
+      expect(expression).to.be.a(CallExpression);
+      expect(expression.operator).to.be('var');
+      expect(isType(expression.type, type)).to.be(true);
+      const key = keyForAccessor(path, type, {});
+      expect(context.variables).to.have.property(key);
+    });
+
+    it('parses a deeply nested var expression with default', () => {
+      const context = newParsingContext();
+      const path = ['foo', 'bar', 42, 'bam'];
+      const type = ColorType;
+      const options = {default: 'red'};
+      const expression = parse(['var', ...path, options], type, context);
+      expect(expression).to.be.a(CallExpression);
+      expect(expression.operator).to.be('var');
+      expect(isType(expression.type, type)).to.be(true);
+      const key = keyForAccessor(path, type, options);
+      expect(context.variables).to.have.property(key);
+      const details = context.variables[key];
+      expect(details.path).to.eql(path);
+      expect(details.type).to.be(type);
+      expect(details.slug).to.be('foo_bar_42_bam_0');
+      expect(details.default).to.be('red');
     });
 
     it('parses a concat expression', () => {
       const context = newParsingContext();
+      const type = StringType;
+      const path = ['foo'];
       const expression = parse(
-        ['concat', ['get', 'foo'], ' ', 'random'],
-        StringType,
+        ['concat', ['get', ...path], ' ', 'random'],
+        type,
         context,
       );
       expect(expression).to.be.a(CallExpression);
       expect(expression.operator).to.be('concat');
-      expect(isType(expression.type, StringType));
-      expect(context.properties.has('foo')).to.be(true);
+      expect(isType(expression.type, type));
+      expect(context.properties).to.have.property(
+        keyForAccessor(path, type, {}),
+      );
     });
 
     it('is ok to have a concat expression with a string and number', () => {
@@ -174,15 +290,19 @@ describe('ol/expr/expression.js', () => {
 
     it('parses a coalesce expression', () => {
       const context = newParsingContext();
+      const type = StringType;
+      const path = ['foo'];
       const expression = parse(
-        ['coalesce', ['get', 'foo'], 'default'],
-        StringType,
+        ['coalesce', ['get', ...path], 'default'],
+        type,
         context,
       );
       expect(expression).to.be.a(CallExpression);
       expect(expression.operator).to.be('coalesce');
-      expect(isType(expression.type, StringType));
-      expect(context.properties.has('foo')).to.be(true);
+      expect(isType(expression.type, type));
+      expect(context.properties).to.have.property(
+        keyForAccessor(path, type, {}),
+      );
     });
 
     it('parses id expression', () => {
@@ -197,8 +317,10 @@ describe('ol/expr/expression.js', () => {
 
     it('parses a == expression', () => {
       const context = newParsingContext();
+      const type = AnyType;
+      const path = ['foo'];
       const expression = parse(
-        ['==', ['get', 'foo'], 'bar'],
+        ['==', ['get', ...path], 'bar'],
         BooleanType,
         context,
       );
@@ -210,7 +332,9 @@ describe('ol/expr/expression.js', () => {
       expect(isType(expression.args[0].type, AnyType)).to.be(true);
       expect(expression.args[1]).to.be.a(LiteralExpression);
       expect(isType(expression.args[1].type, StringType)).to.be(true);
-      expect(context.properties.has('foo')).to.be(true);
+      expect(context.properties).to.have.property(
+        keyForAccessor(path, type, {}),
+      );
     });
 
     it('parses a * expression with colors', () => {

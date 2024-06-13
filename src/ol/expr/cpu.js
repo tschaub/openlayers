@@ -22,8 +22,8 @@ import {
 
 /**
  * @typedef {Object} EvaluationContext
- * @property {Object} properties The values for properties used in 'get' expressions.
- * @property {Object} variables The values for variables used in 'var' expressions.
+ * @property {Object<string, import('./expression.js').PostAccessorInfo>} properties The values for properties used in 'get' expressions.
+ * @property {Object<string, import('./expression.js').PostAccessorInfo>} variables The values for variables used in 'var' expressions.
  * @property {number} resolution The map resolution.
  * @property {string|number|null} featureId The feature id.
  * @property {string} geometryType Geometry type of the current object.
@@ -239,41 +239,26 @@ function compileAssertionExpression(expression, context) {
  * @return {ExpressionEvaluator} The evaluator function.
  */
 function compileAccessorExpression(expression, context) {
-  const nameExpression = /** @type {LiteralExpression} */ (expression.args[0]);
-  const name = /** @type {string} */ (nameExpression.value);
+  const keyArg = expression.args[0];
+  if (
+    !(keyArg instanceof LiteralExpression) ||
+    typeof keyArg.value !== 'string'
+  ) {
+    throw new Error(
+      `expected a literal string argument for accessor expression, got ${keyArg}`,
+    );
+  }
+
+  const key = keyArg.value;
   switch (expression.operator) {
     case Ops.Get: {
-      return (context) => {
-        const args = expression.args;
-        let value = context.properties[name];
-        for (let i = 1, ii = args.length; i < ii; ++i) {
-          const keyExpression = /** @type {LiteralExpression} */ (args[i]);
-          const key = /** @type {string|number} */ (keyExpression.value);
-          value = value[key];
-        }
-        return value;
-      };
-    }
-    case Ops.Var: {
-      return (context) => context.variables[name];
+      return (context) => context.properties[key]?.value;
     }
     case Ops.Has: {
-      return (context) => {
-        const args = expression.args;
-        if (!(name in context.properties)) {
-          return false;
-        }
-        let value = context.properties[name];
-        for (let i = 1, ii = args.length; i < ii; ++i) {
-          const keyExpression = /** @type {LiteralExpression} */ (args[i]);
-          const key = /** @type {string|number} */ (keyExpression.value);
-          if (!value || !Object.hasOwn(value, key)) {
-            return false;
-          }
-          value = value[key];
-        }
-        return true;
-      };
+      return (context) => Object.hasOwn(context.properties, key);
+    }
+    case Ops.Var: {
+      return (context) => context.variables[key]?.value;
     }
     default: {
       throw new Error(`Unsupported accessor operator ${expression.operator}`);
