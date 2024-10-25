@@ -6,12 +6,11 @@ docs: >
   This example demonstrates how data from a GeoTIFF can be reprojected. Calling `source.getView()` returns
   a promise that resolves after the GeoTIFF metadata has been fetched. This can be used to get the image
   projection or coordinate reference system information (the EPSG code in this case) along with the image
-  extent and center coordinates. The `proj4` library is used to transform coordinates from the source
-  projection to the view projection. Using the transformed center, the view is updated to show the image.
+  extent and center coordinates. Using the transformed center, the view is updated to show the image.
 
-  Note that this example works because the proj4 library can handle transforms to and from UTM projections
+  Note that this example works because the library can handle transforms to and from UTM projections
   without additional configuration. For handling arbitrary coordinate reference system transforms, additional
   parameters may need to be loaded.
-tags: "cog, geotiff, reprojection"
+tags: "cog, geotiff, reprojection, utm"
 ---
 <div id="map" class="map"></div>
