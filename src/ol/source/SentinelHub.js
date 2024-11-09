@@ -214,11 +214,18 @@ const baseDelay = 500;
  */
 function serializeEvalscript(evalscript) {
   const version = evalscript.version || defaultEvalscriptVersion;
-  return `//VERSION=${version}
-    ${serializeFunction('setup', evalscript.setup)}
-    ${serializeFunction('evaluatePixel', evalscript.evaluatePixel)}
-    ${serializeFunction('updateOutput', evalscript.updateOutput)}
-  `;
+  const header = '//VERSION=' + version + '\n';
+  const setup = serializeFunction('setup', evalscript.setup);
+  const evaluatePixel = serializeFunction(
+    'evaluatePixel',
+    evalscript.evaluatePixel,
+  );
+  const updateOutput = serializeFunction(
+    'updateOutput',
+    evalscript.updateOutput,
+  );
+  // intentionally not using template literals to get consistent output in dev and built version
+  return header + setup + evaluatePixel + updateOutput;
 }
 
 /**
@@ -349,7 +356,8 @@ export function serializeFunction(name, func) {
     // assume function came from an object property using method syntax
     expression = 'function ' + expression;
   }
-  return `var ${name} = ${expression};`;
+  // intentionally not using template literals to get consistent output in dev and built version
+  return 'var ' + name + ' = ' + expression + ';';
 }
 
 /**
