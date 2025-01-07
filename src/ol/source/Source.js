@@ -85,6 +85,9 @@ class Source extends BaseObject {
      * @type {import("./Source.js").State}
      */
     this.state_ = options.state !== undefined ? options.state : 'ready';
+    if (this.state_ === 'loading') {
+      this.loading = true;
+    }
 
     /**
      * @private
@@ -210,6 +213,15 @@ class Source extends BaseObject {
    * @param {import("./Source.js").State} state State.
    */
   setState(state) {
+    const changed = this.state_ !== state;
+    if (!changed) {
+      return;
+    }
+    if (state === 'loading') {
+      this.loading = true;
+    } else if (this.state_ === 'loading') {
+      this.loading = false;
+    }
     this.state_ = state;
     this.changed();
   }

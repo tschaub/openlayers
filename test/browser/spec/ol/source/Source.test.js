@@ -88,6 +88,29 @@ describe('ol/source/Source', function () {
     });
   });
 
+  describe('loading', function () {
+    it('is initially false', function () {
+      const source = new Source({});
+      expect(source.loading).to.be(false);
+    });
+
+    it('is set to true if constructor is passed loading state', function () {
+      const source = new Source({state: 'loading'});
+      expect(source.loading).to.be(true);
+    });
+
+    it('is set when state changes', function () {
+      const source = new Source({});
+      expect(source.loading).to.be(false);
+
+      source.setState('loading');
+      expect(source.loading).to.be(true);
+
+      source.setState('ready');
+      expect(source.loading).to.be(false);
+    });
+  });
+
   describe('#setAttributions()', function () {
     let source = null;
 
