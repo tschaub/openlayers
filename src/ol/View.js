@@ -2158,3 +2158,77 @@ function calculateCenterOn(coordinate, size, position, resolution, rotation) {
 }
 
 export default View;
+
+/**
+ * @typedef {function(ViewOptions):ViewOptions} ViewTransform
+ */
+
+/**
+ * @param {number} num The number of higher resolution levels to use.
+ * @return {ViewTransform} A view transform.
+ */
+export function withHigherResolutions(num) {
+  return function (options) {
+    if (!options.resolutions) {
+      return options;
+    }
+    const resolutions = [...options.resolutions];
+    const highest = resolutions[resolutions.length - 1];
+    for (let i = 0; i < num; ++i) {
+      resolutions.push(highest / Math.pow(2, i + 1));
+    }
+    return {
+      ...options,
+      resolutions,
+    };
+  };
+}
+
+/**
+ * @param {number} num The number of lower resolution levels to use.
+ * @return {ViewTransform} A view transform.
+ */
+export function withLowerResolutions(num) {
+  return function (options) {
+    if (!options.resolutions) {
+      return options;
+    }
+    const resolutions = [...options.resolutions];
+    const lowest = resolutions[0];
+    for (let i = 0; i < num; ++i) {
+      resolutions.unshift(lowest * Math.pow(2, i + 1));
+    }
+    return {
+      ...options,
+      resolutions,
+    };
+  };
+}
+
+/**
+ * @return {ViewTransform} A view transform.
+ */
+export function withExtentCenter() {
+  return function (options) {
+    if (!options.extent) {
+      return options;
+    }
+    const center = getCenter(options.extent);
+    const newOptions = {...options, center};
+    delete newOptions.extent;
+    return newOptions;
+  };
+}
+
+/**
+ * @param {import("./source/Source.js").default} source The source.
+ * @param {...ViewTransform} transforms The transforms.
+ * @return {Promise<ViewOptions>} The view options.
+ */
+export async function getView(source, ...transforms) {
+  let config = await source.getView();
+  for (const transform of transforms) {
+    config = transform(config);
+  }
+  return config;
+}
