@@ -7,18 +7,28 @@ import {
   containsCoordinate,
   getIntersection,
 } from '../../extent.js';
-import {fromUserExtent} from '../../proj.js';
+import {fromUserExtent, getTransform} from '../../proj.js';
 import {toSize} from '../../size.js';
 import {
   apply as applyTransform,
+  create as createTransform,
   reset as resetTransform,
   translate as translateTransform,
 } from '../../transform.js';
+import {getUid} from '../../util.js';
 import {fromTransform as mat4FromTransform} from '../../vec/mat4.js';
 import {ELEMENT_ARRAY_BUFFER, STATIC_DRAW} from '../../webgl.js';
 import WebGLArrayBuffer from '../../webgl/Buffer.js';
 import {AttributeType} from '../../webgl/Helper.js';
 import TileTexture from '../../webgl/TileTexture.js';
+import {attributeDescriptions as reprojAttributeDescriptions} from '../../webgl/reproj/Mesh.js';
+import {Uniforms as ReprojUniforms} from '../../webgl/reproj/common.js';
+import {getReprojVertexShader} from '../../webgl/reproj/shaders.js';
+import {
+  calculateFinestSourceExtentResolution,
+  createTileMesh,
+  needsReprojection,
+} from '../../webgl/reproj/util.js';
 import WebGLBaseTileLayerRenderer, {
   Uniforms as BaseUniforms,
   getCacheKey,
@@ -88,6 +98,13 @@ class WebGLTileLayerRenderer extends WebGLBaseTileLayerRenderer {
     this.program_;
 
     /**
+     * Program used when drawing warped source-tile meshes.
+     * @type {WebGLProgram|undefined}
+     * @private
+     */
+    this.reprojProgram_;
+
+    /**
      * @private
      */
     this.vertexShader_ = options.vertexShader;
@@ -99,6 +116,25 @@ class WebGLTileLayerRenderer extends WebGLBaseTileLayerRenderer {
 
     /**
      * @private
+     */
+    this.reprojVertexShader_ = getReprojVertexShader();
+
+    /**
+     * Tiles are rendered as a quad with the following structure:
+     *
+     *  [P3]---------[P2]
+     *   |`           |
+     *   |  `     B   |
+     *   |    `       |
+     *   |      `     |
+     *   |   A    `   |
+     *   |          ` |
+     *  [P0]---------[P1]
+     *
+     * Triangle A: P0, P1, P3
+     * Triangle B: P1, P2, P3
+     *
+     * @private
      * @type {WebGLArrayBuffer|undefined}
      */
     this.indices_ = new WebGLArrayBuffer(ELEMENT_ARRAY_BUFFER, STATIC_DRAW);
@@ -109,6 +145,12 @@ class WebGLTileLayerRenderer extends WebGLBaseTileLayerRenderer {
      * @private
      */
     this.paletteTextures_ = options.paletteTextures || [];
+
+    /**
+     * @type {import("../../transform.js").Transform}
+     * @private
+     */
+    this.screenFromTargetTransform_ = createTransform();
   }
 
   /**
@@ -133,6 +175,10 @@ class WebGLTileLayerRenderer extends WebGLBaseTileLayerRenderer {
         this.fragmentShader_,
         this.vertexShader_,
       );
+      this.reprojProgram_ = this.helper.getProgram(
+        this.fragmentShader_,
+        this.reprojVertexShader_,
+      );
       const gl = this.helper.getGL();
       for (const paletteTexture of this.paletteTextures_) {
         // upload the texture data
@@ -156,6 +202,10 @@ class WebGLTileLayerRenderer extends WebGLBaseTileLayerRenderer {
     this.program_ = this.helper.getProgram(
       this.fragmentShader_,
       this.vertexShader_,
+    );
+    this.reprojProgram_ = this.helper.getProgram(
+      this.fragmentShader_,
+      this.reprojVertexShader_,
     );
     const indices = this.indices_;
     if (indices) {
@@ -192,9 +242,31 @@ class WebGLTileLayerRenderer extends WebGLBaseTileLayerRenderer {
    */
   beforeTilesRender(frameState, tilesWithAlpha) {
     super.beforeTilesRender(frameState, tilesWithAlpha);
-    const program = this.program_;
+    const program = this.reprojecting_ ? this.reprojProgram_ : this.program_;
     if (program) {
       this.helper.useProgram(program, frameState);
+      if (this.reprojecting_) {
+        const viewState = frameState.viewState;
+        this.helper.makeProjectionTransform(
+          frameState,
+          this.screenFromTargetTransform_,
+        );
+        this.helper.setUniformMatrixValue(
+          ReprojUniforms.SCREEN_FROM_TARGET,
+          mat4FromTransform(this.tmpMat4_, this.screenFromTargetTransform_),
+        );
+        this.helper.setUniformFloatValue(
+          Uniforms.RESOLUTION,
+          viewState.resolution,
+        );
+        this.helper.setUniformFloatValue(Uniforms.ZOOM, viewState.zoom);
+        if (this.renderExtent_) {
+          this.helper.setUniformFloatVec4(
+            Uniforms.RENDER_EXTENT,
+            this.renderExtent_,
+          );
+        }
+      }
     }
   }
 
@@ -317,6 +389,127 @@ class WebGLTileLayerRenderer extends WebGLBaseTileLayerRenderer {
   }
 
   /**
+   * @override
+   */
+  renderReprojTile(
+    tileTexture,
+    frameState,
+    renderExtent,
+    tileExtent,
+    depth,
+    gutter,
+    alpha,
+    offset,
+  ) {
+    const layer = this.getLayer();
+    const source = layer.getRenderSource();
+    const viewState = frameState.viewState;
+    const sourceProj = source.getProjection() || viewState.projection;
+    const targetProj = viewState.projection;
+
+    const meshKey = [
+      getCacheKey(source, tileTexture.tile.tileCoord),
+      offset,
+      getUid(sourceProj),
+      getUid(targetProj),
+      source.transformMatrix ? source.transformMatrix.join(',') : '',
+    ].join('|');
+
+    let mesh;
+    if (this.reprojCache_.containsKey(meshKey)) {
+      mesh = this.reprojCache_.get(meshKey);
+    } else {
+      const tileGrid =
+        source.getTileGrid() || source.getTileGridForProjection(sourceProj);
+      const sourceResolution = tileGrid.getResolution(
+        tileTexture.tile.tileCoord[0],
+      );
+      mesh = createTileMesh({
+        sourceProj,
+        targetProj,
+        sourceTileExtent: tileExtent,
+        sourceResolution,
+        offsetX: offset,
+        transformMatrix: source.transformMatrix || undefined,
+      });
+      if (!mesh) {
+        return;
+      }
+      this.reprojCache_.set(meshKey, mesh);
+    }
+
+    mesh.flush(this.helper);
+
+    const gl = this.helper.getGL();
+    this.helper.bindBuffer(mesh.vertices);
+    this.helper.bindBuffer(mesh.indices);
+    this.helper.enableAttributes(reprojAttributeDescriptions);
+
+    let textureSlot = 0;
+    while (textureSlot < tileTexture.textures.length) {
+      const uniformName = `${Uniforms.TILE_TEXTURE_ARRAY}[${textureSlot}]`;
+      this.helper.bindTexture(
+        tileTexture.textures[textureSlot],
+        textureSlot,
+        uniformName,
+      );
+      ++textureSlot;
+    }
+
+    for (
+      let paletteIndex = 0;
+      paletteIndex < this.paletteTextures_.length;
+      ++paletteIndex
+    ) {
+      const paletteTexture = this.paletteTextures_[paletteIndex];
+      const texture = paletteTexture.getTexture(gl);
+      this.helper.bindTexture(texture, textureSlot, paletteTexture.name);
+      ++textureSlot;
+    }
+
+    this.helper.setUniformFloatValue(Uniforms.TRANSITION_ALPHA, alpha);
+    this.helper.setUniformFloatValue(Uniforms.DEPTH, depth);
+
+    const sourceExtentUniform = [
+      tileExtent[0] + offset,
+      tileExtent[1],
+      tileExtent[2] + offset,
+      tileExtent[3],
+    ];
+    this.helper.setUniformFloatVec4(
+      ReprojUniforms.SOURCE_EXTENT,
+      sourceExtentUniform,
+    );
+
+    const dataTile = tileTexture.tile;
+    const textureSize =
+      typeof dataTile.getSize === 'function'
+        ? dataTile.getSize()
+        : toSize(
+            (
+              source.getTileGrid() ||
+              source.getTileGridForProjection(sourceProj)
+            ).getTileSize(dataTile.tileCoord[0]),
+          );
+    this.helper.setUniformFloatValue(ReprojUniforms.GUTTER, gutter);
+    this.helper.setUniformFloatVec2(ReprojUniforms.TEXTURE_PIXEL_SIZE, [
+      textureSize[0] + 2 * gutter,
+      textureSize[1] + 2 * gutter,
+    ]);
+
+    this.helper.setUniformFloatValue(
+      Uniforms.TEXTURE_PIXEL_WIDTH,
+      textureSize[0] + 2 * gutter,
+    );
+    this.helper.setUniformFloatValue(
+      Uniforms.TEXTURE_PIXEL_HEIGHT,
+      textureSize[1] + 2 * gutter,
+    );
+
+    this.helper.drawElements(0, mesh.getIndexCount());
+  }
+
+  /**
    * @param {import("../../pixel.js").Pixel} pixel Pixel.
    * @return {Uint8ClampedArray|Uint8Array|Float32Array|DataView|null} Data at the pixel location.
    * @override
@@ -360,11 +553,19 @@ class WebGLTileLayerRenderer extends WebGLBaseTileLayerRenderer {
     for (i = sources.length - 1; i >= 0; --i) {
       source = sources[i];
       if (source.getState() === 'ready') {
-        tileGrid = source.getTileGridForProjection(viewState.projection);
+        const reprojecting = needsReprojection(source, viewState.projection);
+        const sourceProj = source.getProjection();
+        tileGrid = reprojecting
+          ? source.getTileGrid() ||
+            source.getTileGridForProjection(sourceProj || viewState.projection)
+          : source.getTileGridForProjection(viewState.projection);
         if (source.getWrapX()) {
           break;
         }
         const gridExtent = tileGrid.getExtent();
+        if (reprojecting) {
+          break;
+        }
         if (!gridExtent || containsCoordinate(gridExtent, coordinate)) {
           break;
         }
@@ -374,13 +575,37 @@ class WebGLTileLayerRenderer extends WebGLBaseTileLayerRenderer {
       return null;
     }
 
+    const sourceProj = source.getProjection() || viewState.projection;
+    const reprojecting = needsReprojection(source, viewState.projection);
+
+    let sampleCoordinate = coordinate;
+    let sourceResolution = viewState.resolution;
+    if (reprojecting) {
+      sampleCoordinate = getTransform(
+        viewState.projection,
+        sourceProj,
+      )(coordinate.slice());
+      if (source.transformMatrix) {
+        sampleCoordinate = applyTransform(
+          source.transformMatrix,
+          sampleCoordinate,
+        );
+      }
+      sourceResolution = calculateFinestSourceExtentResolution(
+        sourceProj,
+        viewState.projection,
+        boundingExtent([coordinate]),
+        viewState.resolution,
+      );
+    }
+
     const tileTextureCache = this.tileRepresentationCache;
     for (
-      let z = tileGrid.getZForResolution(viewState.resolution);
+      let z = tileGrid.getZForResolution(sourceResolution);
       z >= tileGrid.getMinZoom();
       --z
     ) {
-      const tileCoord = tileGrid.getTileCoordForCoordAndZ(coordinate, z);
+      const tileCoord = tileGrid.getTileCoordForCoordAndZ(sampleCoordinate, z);
       const cacheKey = getCacheKey(source, tileCoord);
       if (!tileTextureCache.containsKey(cacheKey)) {
         continue;
@@ -398,11 +623,11 @@ class WebGLTileLayerRenderer extends WebGLBaseTileLayerRenderer {
       const tileResolution = tileGrid.getResolution(z);
 
       const col =
-        (coordinate[0] - tileOrigin[0]) / tileResolution -
+        (sampleCoordinate[0] - tileOrigin[0]) / tileResolution -
         tileCoord[1] * tileSize[0];
 
       const row =
-        (tileOrigin[1] - coordinate[1]) / tileResolution -
+        (tileOrigin[1] - sampleCoordinate[1]) / tileResolution -
         tileCoord[2] * tileSize[1];
 
       return tileTexture.getPixelData(col, row) ?? null;
@@ -428,6 +653,10 @@ class WebGLTileLayerRenderer extends WebGLBaseTileLayerRenderer {
         gl.deleteProgram(program);
       }
       this.program_ = undefined;
+      if (this.reprojProgram_) {
+        gl.deleteProgram(this.reprojProgram_);
+        this.reprojProgram_ = undefined;
+      }
       const indicesBuffer = this.indices_;
       if (indicesBuffer) {
         helper.deleteBuffer(indicesBuffer);

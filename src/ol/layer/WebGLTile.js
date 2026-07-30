@@ -9,7 +9,6 @@ import {
   uniformNameForVariable,
 } from '../expr/gpu.js';
 import LayerProperty from '../layer/Property.js';
-import {equivalent} from '../proj.js';
 import {expressionToGlsl} from '../render/webgl/compileUtil.js';
 import WebGLTileLayerRenderer, {
   Attributes,
@@ -263,6 +262,19 @@ function parseStyle(style, bandCount, nodataBandIndex) {
     ${functionDefintions.join('\n')}
 
     void main() {
+      // Allow a half-texel of UV overshoot so reprojected tile edges (and
+      // half-pixel mesh overlap) do not discard and leave white seams.
+      float texelU = 0.5 / ${Uniforms.TEXTURE_PIXEL_WIDTH};
+      float texelV = 0.5 / ${Uniforms.TEXTURE_PIXEL_HEIGHT};
+      if (
+        v_textureCoord[0] < -texelU ||
+        v_textureCoord[1] < -texelV ||
+        v_textureCoord[0] > 1.0 + texelU ||
+        v_textureCoord[1] > 1.0 + texelV
+      ) {
+        discard;
+      }
+
       if (
         v_localMapCoord[0] < ${Uniforms.RENDER_EXTENT}[0] ||
         v_localMapCoord[1] < ${Uniforms.RENDER_EXTENT}[1] ||
@@ -272,9 +284,8 @@ function parseStyle(style, bandCount, nodataBandIndex) {
         discard;
       }
 
-      vec4 color = texture2D(${
-        Uniforms.TILE_TEXTURE_ARRAY
-      }[0],  v_textureCoord);
+      vec2 tc = clamp(v_textureCoord, 0.0, 1.0);
+      vec4 color = texture2D(${Uniforms.TILE_TEXTURE_ARRAY}[0],  tc);
 
       ${nodataBandIndex && style.color === undefined ? `color.a = getBandValue(${nodataBandIndex}.0, 0.0, 0.0);` : ''}
 
@@ -354,8 +365,7 @@ class WebGLTileLayer extends BaseTileLayer {
     this.styleVariables_ = this.style_.variables || {};
 
     /**
-     * The band count the shaders were last built for (may include a coverage
-     * band added when reprojecting an alpha-less source).
+     * The band count the shaders were last built for.
      * @type {number}
      * @private
      */
@@ -439,78 +449,45 @@ class WebGLTileLayer extends BaseTileLayer {
   }
 
   /**
-   * Whether reprojecting the source to the given projection appends a coverage
-   * alpha band (only for sources that do not already carry an alpha band).
    * @private
-   * @param {SourceType} source The render source.
-   * @param {import("../proj/Projection.js").default} [projection] The render projection.
-   * @return {boolean} A coverage band is added.
-   */
-  usesCoverageBand_(source, projection) {
-    if (!source || !projection || source.hasAlpha !== false) {
-      return false;
-    }
-    const sourceProjection = source.getProjection();
-    return !!sourceProjection && !equivalent(sourceProjection, projection);
-  }
-
-  /**
-   * @private
-   * @param {import("../proj/Projection.js").default} [projection] The render projection.
    * @return {number} The number of source bands.
    */
-  getSourceBandCount_(projection) {
+  getSourceBandCount_() {
     const source = this.getFirstSource_();
-    const bandCount = source && 'bandCount' in source ? source.bandCount : 4;
-    return this.usesCoverageBand_(
-      /** @type {SourceType} */ (source),
-      projection,
-    )
-      ? bandCount + 1
-      : bandCount;
+    return source && 'bandCount' in source ? source.bandCount : 4;
   }
 
   /**
    * @private
-   * @param {import("../proj/Projection.js").default} [projection] The render projection.
    * @return {number|undefined} The 1-based band index for the nodata alpha band.
    */
-  getSourceNodataBandIndex_(projection) {
+  getSourceNodataBandIndex_() {
     const source = this.getFirstSource_();
     if (!source) {
       return undefined;
-    }
-    if (this.usesCoverageBand_(source, projection)) {
-      // The appended coverage band is the last (1-based) band.
-      return source.bandCount + 1;
     }
     return 'nodataBandIndex' in source ? source.nodataBandIndex : undefined;
   }
 
   /**
-   * Parse the style for the given render projection, tracking the band layout
-   * used.  The render projection determines whether a coverage band is added
-   * for reprojected alpha-less sources.
+   * Parse the style, tracking the band layout used.
    * @private
-   * @param {import("../proj/Projection.js").default} [projection] The render projection.
    * @return {ReturnType<typeof parseStyle>} The parsed style.
    */
-  parseStyleForRender_(projection) {
-    const bandCount = this.getSourceBandCount_(projection);
-    const nodataBandIndex = this.getSourceNodataBandIndex_(projection);
+  parseStyleForRender_() {
+    const bandCount = this.getSourceBandCount_();
+    const nodataBandIndex = this.getSourceNodataBandIndex_();
     this.styleBandCount_ = bandCount;
     this.styleNodataBandIndex_ = nodataBandIndex;
     return parseStyle(this.style_, bandCount, nodataBandIndex);
   }
 
   /**
-   * Rebuild the shaders for the given render projection and apply them to the
-   * renderer.
+   * Rebuild the shaders and apply them to the renderer.
    * @private
-   * @param {import("../proj/Projection.js").default} [projection] The render projection.
    */
-  applyShaders_(projection) {
-    const parsedStyle = this.parseStyleForRender_(projection);
+  applyShaders_() {
+    const parsedStyle = this.parseStyleForRender_();
     this.getRenderer()?.reset({
       vertexShader: parsedStyle.vertexShader,
       fragmentShader: parsedStyle.fragmentShader,
@@ -523,8 +500,7 @@ class WebGLTileLayer extends BaseTileLayer {
    * @override
    */
   createRenderer() {
-    const projection = this.getMapInternal()?.getView()?.getProjection();
-    const parsedStyle = this.parseStyleForRender_(projection);
+    const parsedStyle = this.parseStyleForRender_();
 
     return new WebGLTileLayerRenderer(this, {
       vertexShader: parsedStyle.vertexShader,
@@ -573,17 +549,12 @@ class WebGLTileLayer extends BaseTileLayer {
       return /** @type {HTMLElement} */ (document.createElement('div'));
     }
 
-    // Reprojecting an alpha-less source appends a coverage band, changing the
-    // band layout the shaders must read.  Rebuild them when that changes (e.g.
-    // the first reprojected frame, or after a view projection change).
     if (this.hasRenderer()) {
-      const projection = viewState.projection;
       if (
-        this.getSourceBandCount_(projection) !== this.styleBandCount_ ||
-        this.getSourceNodataBandIndex_(projection) !==
-          this.styleNodataBandIndex_
+        this.getSourceBandCount_() !== this.styleBandCount_ ||
+        this.getSourceNodataBandIndex_() !== this.styleNodataBandIndex_
       ) {
-        this.applyShaders_(projection);
+        this.applyShaders_();
       }
     }
 
@@ -635,8 +606,7 @@ class WebGLTileLayer extends BaseTileLayer {
     this.styleVariables_ = style.variables || {};
     this.style_ = style;
     if (this.hasRenderer()) {
-      const projection = this.getMapInternal()?.getView()?.getProjection();
-      this.applyShaders_(projection);
+      this.applyShaders_();
       this.changed();
     }
   }

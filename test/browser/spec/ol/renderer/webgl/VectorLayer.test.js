@@ -1,8 +1,9 @@
 import {assert} from 'chai';
-import {spy as sinonSpy, stub as sinonStub} from 'sinon';
+import {spy as sinonSpy} from 'sinon';
 import Feature from '../../../../../../src/ol/Feature.js';
 import Map from '../../../../../../src/ol/Map.js';
 import View from '../../../../../../src/ol/View.js';
+import GeoJSON from '../../../../../../src/ol/format/GeoJSON.js';
 import LineString from '../../../../../../src/ol/geom/LineString.js';
 import Point from '../../../../../../src/ol/geom/Point.js';
 import Polygon from '../../../../../../src/ol/geom/Polygon.js';
@@ -11,7 +12,6 @@ import {get as getProjection} from '../../../../../../src/ol/proj.js';
 import Projection from '../../../../../../src/ol/proj/Projection.js';
 import {ShaderBuilder} from '../../../../../../src/ol/render/webgl/ShaderBuilder.js';
 import VectorStyleRenderer, * as ol_render_webgl_vectorstylerenderer from '../../../../../../src/ol/render/webgl/VectorStyleRenderer.js';
-import {createPostProcessDefinition} from '../../../../../../src/ol/render/webgl/textUtil.js';
 import WebGLVectorLayerRenderer from '../../../../../../src/ol/renderer/webgl/VectorLayer.js';
 import VectorSource from '../../../../../../src/ol/source/Vector.js';
 import VectorEventType from '../../../../../../src/ol/source/VectorEventType.js';
@@ -21,6 +21,7 @@ import {
 } from '../../../../../../src/ol/transform.js';
 import {getUid} from '../../../../../../src/ol/util.js';
 import WebGLHelper from '../../../../../../src/ol/webgl/Helper.js';
+import {needsReprojection} from '../../../../../../src/ol/webgl/reproj/util.js';
 import {assertArrayLikeEqual} from '../../../../../util/equal.js';
 
 // sinon can't spy on ES module exports, so the renderer module is mocked here
@@ -164,20 +165,8 @@ describe('ol/renderer/webgl/VectorLayer', () => {
     assert.deepEqual(renderer.styleRenderer_, null);
   });
 
-  it('does include the post processing step for text rendering', () => {
-    const mockPostProcess = createPostProcessDefinition(
-      () => null,
-      () => null,
-    );
-    assert.strictEqual(renderer.postProcesses_.length, 1);
-    assert.deepEqual(
-      renderer.postProcesses_[0].fragmentShader,
-      mockPostProcess.fragmentShader,
-    );
-    assert.deepEqual(
-      renderer.postProcesses_[0].vertexShader,
-      mockPostProcess.vertexShader,
-    );
+  it('does not include a canvas text overlay post process', () => {
+    assert.deepEqual(renderer.postProcesses_, []);
   });
 
   describe('#afterHelperCreated', () => {
@@ -317,11 +306,9 @@ describe('ol/renderer/webgl/VectorLayer', () => {
       // this will initialize the style renderer
       renderer.prepareFrame(frameState);
       renderer.renderFrame(frameState);
-
-      sinonSpy(renderer.styleRenderer_, 'finalizeTextRender');
     });
 
-    it('does not include the text post processing step', () => {
+    it('does not include a canvas text overlay post process', () => {
       assert.deepEqual(renderer.postProcesses_, [POST_PROCESS]);
     });
 
@@ -332,31 +319,10 @@ describe('ol/renderer/webgl/VectorLayer', () => {
         });
       });
 
-      it('does include the post processing step for text rendering', () => {
-        const mockPostProcess = createPostProcessDefinition(
-          () => null,
-          () => null,
-        );
-        assert.strictEqual(renderer.postProcesses_.length, 2);
-        assert.deepEqual(
-          renderer.postProcesses_[0].fragmentShader,
-          mockPostProcess.fragmentShader,
-        );
-        assert.deepEqual(
-          renderer.postProcesses_[0].vertexShader,
-          mockPostProcess.vertexShader,
-        );
-        assert.deepEqual(renderer.postProcesses_[1], POST_PROCESS);
+      it('still does not add a canvas text overlay post process', () => {
+        assert.deepEqual(renderer.postProcesses_, [POST_PROCESS]);
+        assert.isTrue(renderer.hasText_);
       });
-    });
-
-    it('does not call styleRenderer.finalizeTextRender after renderFrame', () => {
-      renderer.prepareFrame(frameState);
-      renderer.renderFrame(frameState);
-      assert.strictEqual(
-        renderer.styleRenderer_.finalizeTextRender.called,
-        false,
-      );
     });
   });
 
@@ -497,12 +463,226 @@ describe('ol/renderer/webgl/VectorLayer', () => {
         );
       });
     });
+
+    describe('feature projection for render-time reprojection', () => {
+      afterEach(() => {
+        renderer.helper.dispose();
+      });
+
+      it('sets projection from format.dataProjection when unset', () => {
+        const lonLat = [-45, 30];
+        const feature = new Feature({
+          geometry: new Point(lonLat.slice()),
+        });
+        vectorSource = new VectorSource({
+          features: [feature],
+          format: new GeoJSON(),
+        });
+        vectorLayer.setSource(vectorSource);
+        renderer = new WebGLVectorLayerRenderer(vectorLayer, {
+          style: SAMPLE_STYLE,
+        });
+        renderer.helper = new WebGLHelper();
+        renderer.afterHelperCreated(frameState);
+
+        const mercator = getProjection('EPSG:3857');
+        frameState = {
+          ...frameState,
+          extent: [-20037508, -20037508, 20037508, 20037508],
+          viewState: {
+            ...frameState.viewState,
+            projection: mercator,
+            center: [0, 0],
+            resolution: 156543.03392804097,
+          },
+        };
+        renderer.prepareFrame(frameState);
+
+        assert.strictEqual(
+          vectorSource.getProjection(),
+          getProjection('EPSG:4326'),
+        );
+        assert.isTrue(needsReprojection(vectorSource, mercator));
+        assert.isTrue(renderer.reprojecting_);
+
+        frameState = {
+          ...frameState,
+          extent: [-180, -90, 180, 90],
+          viewState: {
+            ...frameState.viewState,
+            projection: getProjection('EPSG:4326'),
+            center: [0, 0],
+            resolution: 1.40625,
+          },
+        };
+        renderer.prepareFrame(frameState);
+
+        assertArrayLikeEqual(feature.getGeometry().getCoordinates(), lonLat);
+        assert.isFalse(renderer.reprojecting_);
+      });
+
+      it('sets projection from the view when unset and there is no format CRS', () => {
+        const mercatorCoord = [1000000, 2000000];
+        const feature = new Feature({
+          geometry: new Point(mercatorCoord.slice()),
+        });
+        vectorSource = new VectorSource({
+          features: [feature],
+        });
+        vectorLayer.setSource(vectorSource);
+        renderer = new WebGLVectorLayerRenderer(vectorLayer, {
+          style: SAMPLE_STYLE,
+        });
+        renderer.helper = new WebGLHelper();
+        renderer.afterHelperCreated(frameState);
+
+        const mercator = getProjection('EPSG:3857');
+        frameState = {
+          ...frameState,
+          extent: [-20037508, -20037508, 20037508, 20037508],
+          viewState: {
+            ...frameState.viewState,
+            projection: mercator,
+            center: [0, 0],
+            resolution: 156543.03392804097,
+          },
+        };
+        renderer.prepareFrame(frameState);
+
+        assert.strictEqual(vectorSource.getProjection(), mercator);
+        assert.isFalse(renderer.reprojecting_);
+
+        frameState = {
+          ...frameState,
+          extent: [-180, -90, 180, 90],
+          viewState: {
+            ...frameState.viewState,
+            projection: getProjection('EPSG:4326'),
+            center: [0, 0],
+            resolution: 1.40625,
+          },
+        };
+        renderer.prepareFrame(frameState);
+
+        // Geometries stay in the CRS assigned on first prepareFrame; warp handles the view.
+        assertArrayLikeEqual(
+          feature.getGeometry().getCoordinates(),
+          mercatorCoord,
+        );
+        assert.strictEqual(vectorSource.getProjection(), mercator);
+        assert.isTrue(renderer.reprojecting_);
+      });
+
+      it('does not change an explicit source projection', () => {
+        const lonLat = [-45, 30];
+        const kept = new Feature({
+          geometry: new Point(lonLat),
+        });
+        vectorSource = new VectorSource({
+          projection: 'EPSG:4326',
+          features: [kept],
+        });
+        vectorLayer.setSource(vectorSource);
+        renderer = new WebGLVectorLayerRenderer(vectorLayer, {
+          style: SAMPLE_STYLE,
+        });
+        renderer.helper = new WebGLHelper();
+        renderer.afterHelperCreated(frameState);
+
+        frameState = {
+          ...frameState,
+          extent: [-180, -90, 180, 90],
+          viewState: {
+            ...frameState.viewState,
+            projection: getProjection('EPSG:4326'),
+            center: [0, 0],
+            resolution: 1.40625,
+          },
+        };
+        renderer.prepareFrame(frameState);
+
+        const mercator = getProjection('EPSG:3857');
+        frameState = {
+          ...frameState,
+          extent: [-20037508, -20037508, 20037508, 20037508],
+          viewState: {
+            ...frameState.viewState,
+            projection: mercator,
+            center: [0, 0],
+            resolution: 156543.03392804097,
+          },
+        };
+        renderer.prepareFrame(frameState);
+
+        assertArrayLikeEqual(kept.getGeometry().getCoordinates(), lonLat);
+        assert.strictEqual(
+          vectorSource.getProjection(),
+          getProjection('EPSG:4326'),
+        );
+        assert.isTrue(renderer.reprojecting_);
+      });
+
+      it('passes projectToTarget for text without skipText when reprojecting', () => {
+        const lonLat = [-45, 30];
+        const feature = new Feature({
+          geometry: new Point(lonLat.slice()),
+        });
+        vectorSource = new VectorSource({
+          features: [feature],
+          format: new GeoJSON(),
+        });
+        vectorLayer.setSource(vectorSource);
+        renderer = new WebGLVectorLayerRenderer(vectorLayer, {
+          style: {
+            ...SAMPLE_STYLE,
+            'text-value': 'hello world',
+          },
+        });
+        renderer.helper = new WebGLHelper();
+        renderer.afterHelperCreated(frameState);
+
+        frameState = {
+          ...frameState,
+          extent: [-180, -90, 180, 90],
+          viewState: {
+            ...frameState.viewState,
+            projection: getProjection('EPSG:4326'),
+            center: [0, 0],
+            resolution: 1.40625,
+          },
+        };
+        renderer.prepareFrame(frameState);
+
+        const mercator = getProjection('EPSG:3857');
+        frameState = {
+          ...frameState,
+          extent: [-20037508, -20037508, 20037508, 20037508],
+          viewState: {
+            ...frameState.viewState,
+            projection: mercator,
+            center: [0, 0],
+            resolution: 156543.03392804097,
+          },
+        };
+        sinonSpy(renderer.styleRenderer_, 'generateBuffers');
+        renderer.prepareFrame(frameState);
+
+        assert.isTrue(renderer.reprojecting_);
+        assert.strictEqual(
+          renderer.styleRenderer_.generateBuffers.callCount,
+          1,
+        );
+        const options =
+          renderer.styleRenderer_.generateBuffers.getCall(0).args[3];
+        assert.typeOf(options.projectToTarget, 'function');
+        assert.isUndefined(options.skipText);
+      });
+    });
   });
 
   describe('#renderFrame', () => {
     const withHit = 2;
     let newFrameState;
-    let finalizeTextRenderStub;
 
     beforeEach(async () => {
       // call once without tracking in order to initialize helper
@@ -521,10 +701,6 @@ describe('ol/renderer/webgl/VectorLayer', () => {
       vi.spyOn(renderer.helper, 'finalizeDraw');
       vi.spyOn(renderer.helper, 'deleteBuffer');
       vi.spyOn(renderer.styleRenderer_, 'render');
-      finalizeTextRenderStub = sinonStub(
-        renderer.styleRenderer_,
-        'finalizeTextRender',
-      ).returns(Promise.resolve());
 
       // Snapshot reused vec2/matrix arguments so mock.calls keep the values
       // from each call (the same objects are mutated across calls).
@@ -560,7 +736,7 @@ describe('ol/renderer/webgl/VectorLayer', () => {
       const calls = renderer.helper.setUniformMatrixValue.mock.calls.filter(
         (c) => c[0] === 'u_projectionMatrix',
       );
-      assert.strictEqual(calls.length, 6 * withHit);
+      assert.strictEqual(calls.length, 7 * withHit);
       assertArrayLikeEqual(calls[0], [
         'u_projectionMatrix',
         // 0.5   0     0     0      combination of:
@@ -575,7 +751,7 @@ describe('ol/renderer/webgl/VectorLayer', () => {
       const calls = renderer.helper.setUniformMatrixValue.mock.calls.filter(
         (c) => c[0] === 'u_invertProjectionMatrix',
       );
-      assert.strictEqual(calls.length, 6 * withHit);
+      assert.strictEqual(calls.length, 7 * withHit);
       assertArrayLikeEqual(calls[1], [
         'u_invertProjectionMatrix',
         // 2     0     0     0      invert of u_projectionMatrix
@@ -589,7 +765,7 @@ describe('ol/renderer/webgl/VectorLayer', () => {
       const calls = renderer.helper.setUniformFloatVec2.mock.calls.filter(
         (c) => c[0] === 'u_df_patternOriginX',
       );
-      assert.strictEqual(calls.length, 6 * withHit);
+      assert.strictEqual(calls.length, 7 * withHit);
       assertArrayLikeEqual(calls[1], [
         'u_df_patternOriginX',
         // combination of:
@@ -605,7 +781,7 @@ describe('ol/renderer/webgl/VectorLayer', () => {
       const calls = renderer.helper.setUniformFloatVec2.mock.calls.filter(
         (c) => c[0] === 'u_df_patternOriginY',
       );
-      assert.strictEqual(calls.length, 6 * withHit);
+      assert.strictEqual(calls.length, 7 * withHit);
       assertArrayLikeEqual(calls[1], [
         'u_df_patternOriginY',
         // combination of:
@@ -629,11 +805,8 @@ describe('ol/renderer/webgl/VectorLayer', () => {
     it('calls helper.finalizeDraw once', () => {
       assert.strictEqual(renderer.helper.finalizeDraw.mock.calls.length, 1);
     });
-    it('calls styleRenderer.finalizeTextRender once', () => {
-      assert.strictEqual(
-        renderer.styleRenderer_.finalizeTextRender.calledOnce,
-        true,
-      );
+    it('does not use canvas text overlay finalize', () => {
+      assert.isUndefined(renderer.styleRenderer_.finalizeTextRender);
     });
     it("does not delete any buffer if it's the first render", () => {
       assert.strictEqual(renderer.helper.deleteBuffer.mock.calls.length, 0);
@@ -667,63 +840,16 @@ describe('ol/renderer/webgl/VectorLayer', () => {
 
     describe('regenerate frame buffers', () => {
       beforeEach(async () => {
-        renderer.prepareFrame({
-          ...frameState,
-          extent: [0, 0, 10, 10],
-        });
+        // Pan/zoom alone does not rebuild; a source revision bump does.
+        vectorSource.changed();
+        renderer.prepareFrame(frameState);
         await vi.waitFor(() => {
           assert.ok(renderer.buffers_);
           assert.isTrue(renderer.ready);
         });
       });
       it('deletes previous buffers', () => {
-        assert.strictEqual(renderer.helper.deleteBuffer.mock.calls.length, 9);
-      });
-    });
-
-    describe('text overlay rerender', () => {
-      let finalizeTextRenderResolver;
-
-      beforeEach(() => {
-        finalizeTextRenderStub.returns(
-          new Promise((resolve) => {
-            finalizeTextRenderResolver = resolve;
-          }),
-        );
-        sinonSpy(vectorLayer, 'changed');
-      });
-
-      it('calls layer.changed() after the text overlay is ready to be rendered', async () => {
-        renderer.renderFrame(newFrameState);
-        finalizeTextRenderResolver();
-        await new Promise((resolve) => setTimeout(resolve)); // awaiting next tick
-        assert.strictEqual(vectorLayer.changed.callCount, 1);
-
-        // asking for an identical render: layer.changed() should not be called again
-        renderer.renderFrame(newFrameState);
-        finalizeTextRenderResolver();
-        await new Promise((resolve) => setTimeout(resolve));
-        assert.strictEqual(vectorLayer.changed.callCount, 1);
-
-        // different extent: layer.changed should be called once more
-        renderer.renderFrame(frameState);
-        finalizeTextRenderResolver();
-        await new Promise((resolve) => setTimeout(resolve));
-        assert.strictEqual(vectorLayer.changed.callCount, 2);
-
-        // source updated extent: layer.changed should be called once more
-        vectorSource.changed();
-        renderer.renderFrame(frameState);
-        finalizeTextRenderResolver();
-        await new Promise((resolve) => setTimeout(resolve));
-        assert.strictEqual(vectorLayer.changed.callCount, 3);
-      });
-
-      it('does not call layer.changed() if the renderer was disposed in the meantime', () => {
-        renderer.renderFrame(frameState);
-        renderer.dispose();
-        finalizeTextRenderResolver();
-        assert.strictEqual(vectorLayer.changed.callCount, 0);
+        assert.strictEqual(renderer.helper.deleteBuffer.mock.calls.length, 12);
       });
     });
   });
@@ -869,7 +995,6 @@ describe('ol/renderer/webgl/VectorLayer', () => {
       vi.spyOn(vectorSource, 'removeEventListener');
       deleteBufferSpy = vi.spyOn(renderer.helper, 'deleteBuffer');
       sinonSpy(renderer.styleRenderer_, 'dispose');
-      sinonSpy(renderer.styleRenderer_, 'disposeTextInstructions');
       renderer.dispose();
     });
     it('unlistens to source events', () => {
@@ -888,16 +1013,10 @@ describe('ol/renderer/webgl/VectorLayer', () => {
       assert.strictEqual(eventTypes.includes(VectorEventType.CLEAR), true);
     });
     it('deletes webgl buffers', () => {
-      assert.strictEqual(deleteBufferSpy.mock.calls.length, 9);
+      assert.strictEqual(deleteBufferSpy.mock.calls.length, 12);
     });
     it('disposes of the style renderer', () => {
       assert.strictEqual(renderer.styleRenderer_.dispose.calledOnce, true);
-    });
-    it('disposes of the text rendering instructions', () => {
-      assert.strictEqual(
-        renderer.styleRenderer_.disposeTextInstructions.calledOnce,
-        true,
-      );
     });
   });
 });

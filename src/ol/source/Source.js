@@ -148,6 +148,19 @@ class Source extends BaseObject {
   }
 
   /**
+   * Set the projection of the source.  This does not transform existing
+   * features or tiles; it only records the CRS their coordinates are in.
+   * WebGL vector renderers may call this when the source was constructed
+   * without a projection, so render-time reprojection can use
+   * {@link module:ol/source/Source~Source#getProjection}.
+   * @param {import("../proj.js").ProjectionLike} projection Projection.
+   * @api
+   */
+  setProjection(projection) {
+    this.projection = getProjection(projection);
+  }
+
+  /**
    * @param {import("../proj/Projection.js").default} [projection] Projection.
    * @return {Array<number>|null} Resolutions.
    */

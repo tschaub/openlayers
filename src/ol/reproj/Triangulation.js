@@ -20,6 +20,7 @@ import {
   transform,
 } from '../proj.js';
 import {apply as applyMatrix} from '../transform.js';
+import {MAX_TRIANGLE_WIDTH} from './common.js';
 
 /**
  * Single triangle; consists of 3 source points and 3 target points.
@@ -36,16 +37,6 @@ import {apply as applyMatrix} from '../transform.js';
  * @type {number}
  */
 const MAX_SUBDIVISION = 10;
-
-/**
- * Maximum allowed size of triangle relative to world width. When transforming
- * corners of world extent between certain projections, the resulting
- * triangulation seems to have zero error and no subdivision is performed. If
- * the triangle width is more than this (relative to world width; 0-1),
- * subdivison is forced (up to `MAX_SUBDIVISION`). Default is `0.25`.
- * @type {number}
- */
-const MAX_TRIANGLE_WIDTH = 0.25;
 
 /**
  * @classdesc

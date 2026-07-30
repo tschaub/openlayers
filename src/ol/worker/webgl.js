@@ -174,6 +174,10 @@ worker.onmessage = (/** @type {MessageEvent} */ event) => {
       const customAttrsCount = received.customAttributesSize;
       const renderInstructions = new Float32Array(received.renderInstructions);
 
+      const maxTriangleEdgeLength = received.maxTriangleEdgeLength || 0;
+      const clipExtent = received.clipExtent || null;
+      const unwrapCenterX = received.unwrapCenterX;
+      const worldWidth = received.worldWidth || 0;
       let currentInstructionsIndex = 0;
       while (currentInstructionsIndex < renderInstructions.length) {
         currentInstructionsIndex = writePolygonTrianglesToBuffers(
@@ -182,6 +186,10 @@ worker.onmessage = (/** @type {MessageEvent} */ event) => {
           vertices,
           indices,
           customAttrsCount,
+          maxTriangleEdgeLength,
+          clipExtent,
+          unwrapCenterX,
+          worldWidth,
         );
       }
 

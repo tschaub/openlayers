@@ -64,6 +64,15 @@ describe('ol/source/Source', function () {
     });
   });
 
+  describe('#setProjection()', function () {
+    it('assigns the projection without requiring constructor options', function () {
+      const source = new Source({});
+      assert.isNotOk(source.getProjection());
+      source.setProjection('EPSG:4326');
+      assert.strictEqual(source.getProjection(), getProjection('EPSG:4326'));
+    });
+  });
+
   describe('#refresh()', function () {
     it('dispatches the change event', function () {
       const source = new Source({

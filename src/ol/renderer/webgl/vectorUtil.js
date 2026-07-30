@@ -2,6 +2,7 @@
  * @module ol/renderer/webgl/vectorUtil
  */
 
+import {getWidth} from '../../extent.js';
 import {getHighPart, getLowPart} from '../../render/webgl/float64Util.js';
 import {
   apply as applyTransform,
@@ -16,6 +17,10 @@ import {
   fromTransform as mat4FromTransform,
 } from '../../vec/mat4.js';
 import {DefaultUniform} from '../../webgl/Helper.js';
+import {
+  MAX_TRIANGLE_WIDTH,
+  Uniforms as ReprojUniforms,
+} from '../../webgl/reproj/common.js';
 
 export const VectorUniforms = {
   // the patterns origin is computed on the CPU; it is expressed in the same coordinate system as the geometries rendered,
@@ -41,12 +46,17 @@ const tmpMat4 = createMat4();
  * @param {import('../../transform.js').Transform} worldToViewTransform Transform
  * @param {import('../../transform.js').Transform} geometryInvertTransform Transform.
  * @param {import('../../Map.js').FrameState} frameState Frame state.
+ * @param {Object} [options] Options.
+ * @param {boolean} [options.patternsInSourceSpace] When true, pattern origin is
+ *     computed in buffer/source space (used while GPU-warping). Residual error
+ *     vs a Euclidean pattern in target space is expected under strong warps.
  */
 export function applyVectorUniforms(
   helper,
   worldToViewTransform,
   geometryInvertTransform,
   frameState,
+  options,
 ) {
   // world to screen matrix
   setFromTransform(tmpTransform, worldToViewTransform);
@@ -83,6 +93,10 @@ export function applyVectorUniforms(
     -center[0],
     -center[1],
   );
+  if (options?.patternsInSourceSpace) {
+    // Anchor patterns in the same CRS as buffer positions (source when warping).
+    multiplyTransform(tmpTransform, geometryInvertTransform);
+  }
   applyTransform(tmpTransform, tmpCoords);
 
   // set uniforms
@@ -108,4 +122,114 @@ export function applyVectorUniforms(
     VectorUniforms.PATTERN_SCALE_RATIO_DOUBLE,
     tmpCoords,
   );
+}
+
+/**
+ * Texture unit reserved for the source→target warp field.
+ * @type {number}
+ */
+export const WARP_TEXTURE_SLOT = 10;
+
+/**
+ * @type {WebGLTexture|null}
+ */
+let dummyWarpTexture = null;
+
+/**
+ * @param {import('../../webgl/Helper.js').default} helper Helper.
+ * @return {WebGLTexture} 1×1 placeholder texture.
+ */
+function getDummyWarpTexture(helper) {
+  if (dummyWarpTexture) {
+    return dummyWarpTexture;
+  }
+  const gl = helper.getGL();
+  dummyWarpTexture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, dummyWarpTexture);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA,
+    1,
+    1,
+    0,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    new Uint8Array([0, 0, 0, 0]),
+  );
+  gl.bindTexture(gl.TEXTURE_2D, null);
+  return dummyWarpTexture;
+}
+
+/**
+ * Bind warp-field uniforms for vector shaders (`sourceToTarget`).
+ * @param {import('../../webgl/Helper.js').default} helper Helper.
+ * @param {import('../../webgl/reproj/WarpField.js').default|null|undefined} warpField Active warp field, or null to disable.
+ * @param {import('../../coordinate.js').Coordinate} [sourceOrigin] Added to
+ *     attribute positions before lookup (tile origin + wrap offset).
+ * @param {import('../../proj/Projection.js').default} [targetProj] Target
+ *     projection (for cut-crossing edge length threshold).
+ * @param {number} [maxEdgeLength] Optional view-sized cut threshold in target
+ *     units. When omitted, falls back to a fraction of the target CRS width.
+ */
+export function applyWarpUniforms(
+  helper,
+  warpField,
+  sourceOrigin,
+  targetProj,
+  maxEdgeLength,
+) {
+  const origin = sourceOrigin || [0, 0];
+  if (warpField) {
+    const uniforms = warpField.getUniforms(helper);
+    if (
+      uniforms[ReprojUniforms.WARP_ENABLED] &&
+      uniforms[ReprojUniforms.WARP_TEXTURE]
+    ) {
+      helper.setUniformFloatValue(ReprojUniforms.WARP_ENABLED, 1);
+      helper.bindTexture(
+        /** @type {WebGLTexture} */ (uniforms[ReprojUniforms.WARP_TEXTURE]),
+        WARP_TEXTURE_SLOT,
+        ReprojUniforms.WARP_TEXTURE,
+      );
+      helper.setUniformFloatVec4(
+        ReprojUniforms.WARP_SOURCE_EXTENT,
+        /** @type {Array<number>} */ (
+          uniforms[ReprojUniforms.WARP_SOURCE_EXTENT]
+        ),
+      );
+      helper.setUniformFloatVec2(
+        ReprojUniforms.WARP_SIZE,
+        /** @type {Array<number>} */ (uniforms[ReprojUniforms.WARP_SIZE]),
+      );
+      helper.setUniformFloatVec2(ReprojUniforms.WARP_SOURCE_ORIGIN, origin);
+      const targetExtent = targetProj && targetProj.getExtent();
+      const crsMaxEdge =
+        targetExtent && getWidth(targetExtent) > 0
+          ? getWidth(targetExtent) * MAX_TRIANGLE_WIDTH
+          : 0;
+      const maxEdge =
+        maxEdgeLength > 0
+          ? crsMaxEdge > 0
+            ? Math.min(maxEdgeLength, crsMaxEdge)
+            : maxEdgeLength
+          : crsMaxEdge;
+      helper.setUniformFloatValue(ReprojUniforms.WARP_MAX_EDGE_LENGTH, maxEdge);
+      return;
+    }
+  }
+  helper.setUniformFloatValue(ReprojUniforms.WARP_ENABLED, 0);
+  helper.bindTexture(
+    getDummyWarpTexture(helper),
+    WARP_TEXTURE_SLOT,
+    ReprojUniforms.WARP_TEXTURE,
+  );
+  helper.setUniformFloatVec4(ReprojUniforms.WARP_SOURCE_EXTENT, [0, 0, 1, 1]);
+  helper.setUniformFloatVec2(ReprojUniforms.WARP_SIZE, [1, 1]);
+  helper.setUniformFloatVec2(ReprojUniforms.WARP_SOURCE_ORIGIN, [0, 0]);
+  helper.setUniformFloatValue(ReprojUniforms.WARP_MAX_EDGE_LENGTH, 0);
 }

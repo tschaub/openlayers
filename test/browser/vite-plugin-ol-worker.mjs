@@ -21,6 +21,16 @@ export default function olWorker() {
         return null;
       }
       const chunk = await build(file, {minify: false});
+      // Rollup inlines imports (e.g. bufferUtil). Watch those files so edits
+      // invalidate this transform; otherwise the worker blob stays stale while
+      // the main thread picks up new buffer layouts (fills disappear).
+      if (chunk.modules) {
+        for (const moduleId of Object.keys(chunk.modules)) {
+          if (path.isAbsolute(moduleId)) {
+            this.addWatchFile(moduleId);
+          }
+        }
+      }
       return {code: chunk.code, map: null};
     },
   };

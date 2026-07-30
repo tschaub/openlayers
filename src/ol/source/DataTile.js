@@ -7,7 +7,6 @@ import EventType from '../events/EventType.js';
 import {getHeight, getWidth} from '../extent.js';
 import {toPromise} from '../functions.js';
 import {equivalent, get as getProjection} from '../proj.js';
-import ReprojDataTile from '../reproj/DataTile.js';
 import {toSize} from '../size.js';
 import {getCacheKey} from '../tilecoord.js';
 import {
@@ -61,10 +60,8 @@ import TileEventType from './TileEventType.js';
  * @property {boolean} [wrapX=false] Render tiles beyond the antimeridian.
  * @property {number} [transition] Transition time when fading in new tiles (in milliseconds).
  * @property {number} [bandCount=4] Number of bands represented in the data.
- * @property {boolean} [hasAlpha] Whether the data includes an alpha band.  Used when
- * reprojecting to decide whether a coverage alpha band needs to be appended so areas
- * outside the source footprint render transparent.  Defaults to `true` for 2 (luminance
- * alpha) or 4 (RGBA) bands and `false` otherwise.
+ * @property {boolean} [hasAlpha] Whether the data includes an alpha band.
+ * Defaults to `true` for 2 (luminance alpha) or 4 (RGBA) bands and `false` otherwise.
  * @property {boolean} [interpolate=false] Use interpolated values when resampling.  By default,
  * the nearest neighbor is used when resampling.
  * @property {CrossOriginAttribute} [crossOrigin='anonymous'] The crossOrigin property to pass to loaders for image data.
@@ -157,9 +154,7 @@ class DataTileSource extends TileSource {
     this.bandCount = options.bandCount === undefined ? 4 : options.bandCount; // assume RGBA if undefined
 
     /**
-     * Whether the data includes an alpha band.  When `false`, reprojection
-     * appends a coverage alpha band so areas outside the source footprint
-     * render transparent instead of opaque.
+     * Whether the data includes an alpha band.
      * @type {boolean}
      */
     this.hasAlpha =
@@ -231,15 +226,7 @@ class DataTileSource extends TileSource {
    * @override
    */
   getGutterForProjection(projection) {
-    const thisProj = this.getProjection();
-    if (
-      (!thisProj || equivalent(thisProj, projection)) &&
-      !this.transformMatrix
-    ) {
-      return this.gutter_;
-    }
-
-    return 0;
+    return this.gutter_;
   }
 
   /**
@@ -254,65 +241,6 @@ class DataTileSource extends TileSource {
    * @param {number} z Tile coordinate z.
    * @param {number} x Tile coordinate x.
    * @param {number} y Tile coordinate y.
-   * @param {import("../proj/Projection.js").default} targetProj The output projection.
-   * @param {import("../proj/Projection.js").default} sourceProj The input projection.
-   * @param {import("../structs/LRUCache.js").default<import("../Tile.js").default>} [tileCache] Tile cache.
-   * @return {!TileType} Tile.
-   */
-  getReprojTile_(z, x, y, targetProj, sourceProj, tileCache) {
-    const sourceTileGrid =
-      this.tileGrid || this.getTileGridForProjection(sourceProj || targetProj);
-    const reprojTilePixelRatio = Math.max.apply(
-      null,
-      sourceTileGrid.getResolutions().map((r, z) => {
-        const tileSize = toSize(sourceTileGrid.getTileSize(z));
-        const textureSize = this.getTileSize(z);
-        return Math.max(
-          textureSize[0] / tileSize[0],
-          textureSize[1] / tileSize[1],
-        );
-      }),
-    );
-
-    const targetTileGrid = this.getTileGridForProjection(targetProj);
-    const tileCoord = [z, x, y];
-    const wrappedTileCoord = this.getTileCoordForTileUrlFunction(
-      tileCoord,
-      targetProj,
-    );
-
-    const options = Object.assign(
-      {
-        sourceProj: sourceProj || targetProj,
-        sourceTileGrid,
-        targetProj,
-        targetTileGrid,
-        tileCoord,
-        wrappedTileCoord,
-        pixelRatio: reprojTilePixelRatio,
-        gutter: this.gutter_,
-        hasAlpha: this.hasAlpha,
-        getTileFunction: (
-          /** @type {number} */ z,
-          /** @type {number} */ x,
-          /** @type {number} */ y,
-          /** @type {number} */ pixelRatio,
-        ) => this.getTile(z, x, y, pixelRatio, undefined, tileCache),
-        transformMatrix: this.transformMatrix,
-      },
-      /** @type {import("../reproj/DataTile.js").Options} */ (this.tileOptions),
-    );
-    const tile = /** @type {TileType} */ (
-      /** @type {*} */ (new ReprojDataTile(options))
-    );
-    tile.key = this.getKey();
-    return tile;
-  }
-
-  /**
-   * @param {number} z Tile coordinate z.
-   * @param {number} x Tile coordinate x.
-   * @param {number} y Tile coordinate y.
    * @param {number} pixelRatio Pixel ratio.
    * @param {import("../proj/Projection.js").default} [projection] Projection.
    * @param {import("../structs/LRUCache.js").default<import("../Tile.js").default>} [tileCache] Tile cache.
@@ -320,22 +248,6 @@ class DataTileSource extends TileSource {
    * @override
    */
   getTile(z, x, y, pixelRatio, projection, tileCache) {
-    const sourceProjection = this.getProjection();
-    if (
-      projection &&
-      ((sourceProjection && !equivalent(sourceProjection, projection)) ||
-        this.transformMatrix)
-    ) {
-      return this.getReprojTile_(
-        z,
-        x,
-        y,
-        projection,
-        sourceProjection || projection,
-        tileCache,
-      );
-    }
-
     const size = this.getTileSize(z);
 
     const sourceLoader = this.loader_;

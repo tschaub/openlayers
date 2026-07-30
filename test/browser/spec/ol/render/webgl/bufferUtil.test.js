@@ -1,5 +1,7 @@
 import {assert} from 'chai';
 import {
+  filterTrianglesByTargetEdge,
+  unwrapFlatCoordinatesX,
   writeLineSegmentToBuffers,
   writePointFeatureToBuffers,
   writePolygonTrianglesToBuffers,
@@ -440,6 +442,216 @@ describe('webgl buffer generation utils', function () {
       it('correctly returns the new index', function () {
         assert.deepEqual(newIndex, 29);
       });
+    });
+
+    describe('maxTriangleEdgeLength filter', function () {
+      it('skips triangles that cross the antimeridian in X', function () {
+        instructions.set([1, 3, 170, 0, -170, 0, 0, 10]);
+        writePolygonTrianglesToBuffers(
+          instructions,
+          0,
+          vertexArray,
+          indexArray,
+          0,
+          180,
+        );
+        assert.lengthOf(vertexArray, 6);
+        assert.lengthOf(indexArray, 0);
+      });
+
+      it('keeps wide triangles that do not wrap in X', function () {
+        // Width 150° < half-world (180°), so edges are kept.
+        instructions.set([1, 4, -75, 0, 75, 0, 75, 10, -75, 10]);
+        writePolygonTrianglesToBuffers(
+          instructions,
+          0,
+          vertexArray,
+          indexArray,
+          0,
+          180,
+        );
+        assert.isAbove(indexArray.length, 0);
+      });
+
+      it('clips triangles that straddle clipExtent instead of dropping them', function () {
+        instructions.set([1, 3, 0, 70, 10, 70, 5, -80]);
+        writePolygonTrianglesToBuffers(
+          instructions,
+          0,
+          vertexArray,
+          indexArray,
+          0,
+          0,
+          [-180, 40, 180, 90],
+        );
+        assert.isAbove(indexArray.length, 0);
+        // Referenced vertices (incl. Steiner) must lie in the clip extent.
+        for (let i = 0; i < indexArray.length; i++) {
+          const y = vertexArray[indexArray[i] * 2 + 1];
+          assert.isAtLeast(y, 40);
+          assert.isAtMost(y, 90);
+        }
+      });
+
+      it('drops triangles entirely outside clipExtent', function () {
+        instructions.set([1, 3, 0, -80, 10, -80, 5, -70]);
+        writePolygonTrianglesToBuffers(
+          instructions,
+          0,
+          vertexArray,
+          indexArray,
+          0,
+          0,
+          [-180, 40, 180, 90],
+        );
+        assert.lengthOf(indexArray, 0);
+      });
+
+      it('keeps dateline triangles when rings are unwrapped for earcut', function () {
+        instructions.set([1, 3, 170, 0, -170, 0, 180, 10]);
+        writePolygonTrianglesToBuffers(
+          instructions,
+          0,
+          vertexArray,
+          indexArray,
+          0,
+          180,
+          null,
+          180,
+          360,
+        );
+        assert.lengthOf(vertexArray, 6);
+        assert.lengthOf(indexArray, 3);
+        assert.equal(vertexArray[0], 170);
+        assert.equal(vertexArray[2], 190);
+      });
+
+      it('triangulates in target space when projectToTarget is set', function () {
+        // Nonlinear X warp: source earcut of a concave C would leave a mouth
+        // diagonal that folds after warp. Target-space earcut avoids it.
+        // C opening to +X; warp stretches X by y so the mouth diagonal bows.
+        instructions.set([
+          1, 8, 0, 0, 4, 0, 4, 1, 2, 1, 2, 3, 4, 3, 4, 4, 0, 4,
+        ]);
+        const project = (c) => [c[0] * (1 + c[1]), c[1]];
+        writePolygonTrianglesToBuffers(
+          instructions,
+          0,
+          vertexArray,
+          indexArray,
+          0,
+          0,
+          null,
+          undefined,
+          0,
+          project,
+        );
+        assert.isAbove(indexArray.length, 0);
+        // Sample in the C opening (source); after warp the GPU triangle of a
+        // source-space mouth diagonal would cover it — target earcut must not.
+        const open = project([3, 2]);
+        function pointInTri(p, a, b, c) {
+          const v0x = c[0] - a[0];
+          const v0y = c[1] - a[1];
+          const v1x = b[0] - a[0];
+          const v1y = b[1] - a[1];
+          const v2x = p[0] - a[0];
+          const v2y = p[1] - a[1];
+          const dot00 = v0x * v0x + v0y * v0y;
+          const dot01 = v0x * v1x + v0y * v1y;
+          const dot02 = v0x * v2x + v0y * v2y;
+          const dot11 = v1x * v1x + v1y * v1y;
+          const dot12 = v1x * v2x + v1y * v2y;
+          const inv = 1 / (dot00 * dot11 - dot01 * dot01);
+          const u = (dot11 * dot02 - dot01 * dot12) * inv;
+          const v = (dot00 * dot12 - dot01 * dot02) * inv;
+          return u >= 0 && v >= 0 && u + v <= 1;
+        }
+        let covered = false;
+        for (let i = 0; i < indexArray.length; i += 3) {
+          const a = project([
+            vertexArray[indexArray[i] * 2],
+            vertexArray[indexArray[i] * 2 + 1],
+          ]);
+          const b = project([
+            vertexArray[indexArray[i + 1] * 2],
+            vertexArray[indexArray[i + 1] * 2 + 1],
+          ]);
+          const c = project([
+            vertexArray[indexArray[i + 2] * 2],
+            vertexArray[indexArray[i + 2] * 2 + 1],
+          ]);
+          if (pointInTri(open, a, b, c)) {
+            covered = true;
+            break;
+          }
+        }
+        assert.isFalse(covered);
+      });
+    });
+  });
+
+  describe('unwrapFlatCoordinatesX', function () {
+    it('unwraps a jump across the dateline', function () {
+      const out = unwrapFlatCoordinatesX([170, 0, -170, 0], 180, 360);
+      assert.equal(out[0], 170);
+      assert.equal(out[2], 190);
+    });
+  });
+
+  describe('filterTrianglesByTargetEdge', function () {
+    it('drops triangles whose long edges fold across a projection cut', function () {
+      // Nonlinear warp: midpoint jumps away from the chord (cut / UV clamp).
+      const refined = filterTrianglesByTargetEdge(
+        [0, 0, 1, 0, 0, 1],
+        [0, 1, 2],
+        2,
+        (c) => {
+          if (Math.abs(c[0] - 0.5) < 1e-9 && Math.abs(c[1]) < 1e-9) {
+            return [0, 1000];
+          }
+          return [c[0] * 1000, c[1]];
+        },
+        100,
+      );
+      assert.lengthOf(refined.indices, 0);
+    });
+
+    it('keeps long but smooth earcut diagonals (hole → outer ring)', function () {
+      // Linear warp: long edges stay; midpoint matches the chord.
+      // Must not drop — that left fan gaps from holes in EPSG:23032.
+      const refined = filterTrianglesByTargetEdge(
+        [0, 0, 10, 0, 0, 10],
+        [0, 1, 2],
+        2,
+        (c) => [c[0] * 100, c[1] * 100],
+        50,
+      );
+      assert.deepEqual(Array.from(refined.indices), [0, 1, 2]);
+    });
+
+    it('keeps long needle slivers (no source-space splits)', function () {
+      // Splitting in source space under nonlinear warp created fan gaps.
+      const refined = filterTrianglesByTargetEdge(
+        [0, 0, 100, 0, 50, 0.1],
+        [0, 1, 2],
+        2,
+        (c) => c.slice(),
+        10,
+      );
+      assert.deepEqual(Array.from(refined.indices), [0, 1, 2]);
+    });
+
+    it('keeps triangles within the target edge limit', function () {
+      const refined = filterTrianglesByTargetEdge(
+        [0, 0, 1, 0, 0, 1],
+        [0, 1, 2],
+        2,
+        (c) => c.slice(),
+        10,
+      );
+      assert.deepEqual(Array.from(refined.indices), [0, 1, 2]);
+      assert.deepEqual(Array.from(refined.vertices), [0, 0, 1, 0, 0, 1]);
     });
   });
 });

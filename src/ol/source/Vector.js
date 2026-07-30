@@ -83,6 +83,14 @@ export class VectorSourceEvent extends Event {
  * @property {Array<FeatureType>|Collection<FeatureType>} [features]
  * Features. If provided as {@link module:ol/Collection~Collection}, the features in the source
  * and the collection will stay in sync.
+ * @property {import("../proj.js").ProjectionLike} [projection] Feature projection.
+ * Coordinates of features in this source are in this CRS.  When set, loaders keep
+ * features in this projection (they are not transformed into the view projection).
+ * For {@link module:ol/layer/WebGLVector~WebGLVector} (and other WebGL vector
+ * renderers), if omitted the renderer assigns a projection from the format's
+ * `dataProjection` when available, otherwise from the view projection on first
+ * render, so reprojection can happen at draw time.  Canvas vector layers still
+ * pass the view projection to loaders when this option is omitted.
  * @property {import("../format/Feature.js").default<FeatureType>} [format] The feature format used by the XHR
  * feature loader when `url` is set. Required if `url` is set, otherwise ignored.
  * @property {import("../featureloader.js").FeatureLoader<FeatureType>} [loader]
@@ -138,9 +146,10 @@ export class VectorSourceEvent extends Event {
  * the given URL. Use a {@link module:ol/featureloader~FeatureUrlFunction} to generate the url with
  * other loading strategies.
  * Requires `format` to be set as well.
- * When default XHR feature loader is provided, the features will
- * be transformed from the data projection to the view projection
- * during parsing. If your remote data source does not advertise its projection
+ * When default XHR feature loader is provided, features are transformed from
+ * the data projection into the projection passed to the loader (typically the
+ * view projection for canvas layers, or the source / format feature CRS for
+ * WebGL). If your remote data source does not advertise its projection
  * properly, this transformation will be incorrect. For some formats, the
  * default projection (usually EPSG:4326) can be overridden by setting the
  * dataProjection constructor option on the format.
@@ -186,7 +195,7 @@ class VectorSource extends Source {
     super({
       attributions: options.attributions,
       interpolate: true,
-      projection: undefined,
+      projection: options.projection,
       state: 'ready',
       wrapX: options.wrapX !== undefined ? options.wrapX : true,
     });

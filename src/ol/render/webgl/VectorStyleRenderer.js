@@ -2,33 +2,265 @@
  * @module ol/render/webgl/VectorStyleRenderer
  */
 import Disposable from '../../Disposable.js';
-import {createCanvasContext2D} from '../../dom.js';
+import {
+  densifyFlatCoordinates,
+  densifyFlatCoordinatesXYM,
+} from '../../geom/flat/densify.js';
 import {
   create as createTransform,
   makeInverse as makeInverseTransform,
 } from '../../transform.js';
 import {ARRAY_BUFFER, DYNAMIC_DRAW, ELEMENT_ARRAY_BUFFER} from '../../webgl.js';
 import WebGLArrayBuffer from '../../webgl/Buffer.js';
+import FontAtlas from '../../webgl/FontAtlas.js';
 import {AttributeType} from '../../webgl/Helper.js';
 import LabelsArray from '../../webgl/LabelsArray.js';
-import {create as createTextOverlayWorker} from '../../worker/textOverlay.js';
 import {create as createWebGLWorker} from '../../worker/webgl.js';
+import {flatStyleLikeToStyleFunction} from '../canvas/style.js';
 import {
-  TextOverlayWorkerMessageType,
-  WebGLWorkerMessageType,
-} from './constants.js';
+  filterTrianglesByTargetEdge,
+  unwrapFlatCoordinatesX,
+  unwrapPolygonFlatCoordinates,
+  writePolygonTrianglesToBuffers,
+} from './bufferUtil.js';
+import {WebGLWorkerMessageType} from './constants.js';
 import {colorEncodeIdAndPack} from './encodeUtil.js';
+import {
+  createGlyphQuadMesh,
+  generateGlyphInstanceAttributes,
+} from './glyphBuffers.js';
+import {
+  GlyphAttributes,
+  GlyphUniforms,
+  getGlyphFragmentShader,
+  getGlyphVertexShader,
+} from './glyphShaders.js';
 import {
   generateLineStringRenderInstructions,
   generatePointRenderInstructions,
   generatePolygonRenderInstructions,
   getCustomAttributesSize,
 } from './renderinstructions.js';
-import {serializeFrameState} from './serialize.js';
 import {parseLiteralStyle} from './style.js';
-import {hasTextStyle} from './textUtil.js';
+import {hasTextStyle, stripNonTextStyleProperties} from './textUtil.js';
+
+/**
+ * Return a shallow-cloned batch with densified line/polygon coordinates.
+ * Used when GPU-warping so long chords stay acceptable after lookup.
+ * @param {import('./MixedGeometryBatch.js').default} batch Geometry batch
+ * @param {number} maxSegmentLength Max segment length in batch CRS units
+ * @param {number} [maxSpanX] Do not subdivide segments with |Δx| larger than this
+ * @return {import('./MixedGeometryBatch.js').default} Densified batch view
+ */
+function densifyGeometryBatch(batch, maxSegmentLength, maxSpanX) {
+  /** @type {import('./MixedGeometryBatch.js').default} */
+  const densified = Object.create(Object.getPrototypeOf(batch));
+  Object.assign(densified, batch);
+
+  const lineBatch = batch.lineStringBatch;
+  /** @type {import('./MixedGeometryBatch.js').LineStringGeometryBatch} */
+  const newLine = {
+    entries: {},
+    geometriesCount: 0,
+    verticesCount: 0,
+  };
+  for (const uid in lineBatch.entries) {
+    const entry = lineBatch.entries[uid];
+    /** @type {Array<Array<number>>} */
+    const flatCoordss = [];
+    let verticesCount = 0;
+    for (let i = 0; i < entry.flatCoordss.length; ++i) {
+      const densifiedCoords = densifyFlatCoordinatesXYM(
+        entry.flatCoordss[i],
+        maxSegmentLength,
+        maxSpanX,
+      );
+      flatCoordss.push(densifiedCoords);
+      verticesCount += densifiedCoords.length / 3;
+    }
+    newLine.entries[uid] = {
+      ...entry,
+      flatCoordss,
+      verticesCount,
+    };
+    newLine.verticesCount += verticesCount;
+    newLine.geometriesCount += flatCoordss.length;
+  }
+  densified.lineStringBatch = newLine;
+
+  const polygonBatch = batch.polygonBatch;
+  /** @type {import('./MixedGeometryBatch.js').PolygonGeometryBatch} */
+  const newPolygon = {
+    entries: {},
+    geometriesCount: 0,
+    verticesCount: 0,
+    ringsCount: 0,
+  };
+  for (const uid in polygonBatch.entries) {
+    const entry = polygonBatch.entries[uid];
+    /** @type {Array<Array<number>>} */
+    const flatCoordss = [];
+    /** @type {Array<Array<number>>} */
+    const ringsVerticesCounts = [];
+    let verticesCount = 0;
+    let ringsCount = 0;
+    for (let i = 0; i < entry.flatCoordss.length; ++i) {
+      const ringCounts = entry.ringsVerticesCounts?.[i];
+      if (!ringCounts) {
+        continue;
+      }
+      /** @type {Array<number>} */
+      const densifiedFlat = [];
+      /** @type {Array<number>} */
+      const newRingCounts = [];
+      let offset = 0;
+      for (let r = 0; r < ringCounts.length; ++r) {
+        const count = ringCounts[r];
+        const ring = entry.flatCoordss[i].slice(
+          offset * 2,
+          (offset + count) * 2,
+        );
+        const densifiedRing = densifyFlatCoordinates(
+          ring,
+          maxSegmentLength,
+          maxSpanX,
+        );
+        densifiedFlat.push(...densifiedRing);
+        newRingCounts.push(densifiedRing.length / 2);
+        offset += count;
+      }
+      flatCoordss.push(densifiedFlat);
+      ringsVerticesCounts.push(newRingCounts);
+      verticesCount += densifiedFlat.length / 2;
+      ringsCount += newRingCounts.length;
+    }
+    newPolygon.entries[uid] = {
+      ...entry,
+      flatCoordss,
+      ringsVerticesCounts,
+      verticesCount,
+      ringsCount,
+    };
+    newPolygon.verticesCount += verticesCount;
+    newPolygon.ringsCount += ringsCount;
+    newPolygon.geometriesCount += flatCoordss.length;
+  }
+  densified.polygonBatch = newPolygon;
+  densified.pointBatch = batch.pointBatch;
+  return densified;
+}
+
+/**
+ * Unwrap geometry batch X around a center so dateline-crossing features stay
+ * continuous for earcut and warp-field lookup.
+ * @param {import('./MixedGeometryBatch.js').default} batch Geometry batch
+ * @param {number} unwrapCenterX Center X
+ * @param {number} worldWidth World width
+ * @return {import('./MixedGeometryBatch.js').default} Unwrapped batch view
+ */
+function unwrapGeometryBatchX(batch, unwrapCenterX, worldWidth) {
+  if (!(worldWidth > 0)) {
+    return batch;
+  }
+  /** @type {import('./MixedGeometryBatch.js').default} */
+  const unwrapped = Object.create(Object.getPrototypeOf(batch));
+  Object.assign(unwrapped, batch);
+
+  const lineBatch = batch.lineStringBatch;
+  /** @type {import('./MixedGeometryBatch.js').LineStringGeometryBatch} */
+  const newLine = {
+    entries: {},
+    geometriesCount: lineBatch.geometriesCount,
+    verticesCount: lineBatch.verticesCount,
+  };
+  for (const uid in lineBatch.entries) {
+    const entry = lineBatch.entries[uid];
+    newLine.entries[uid] = {
+      ...entry,
+      flatCoordss: entry.flatCoordss.map((coords) =>
+        unwrapFlatCoordinatesX(coords, unwrapCenterX, worldWidth, 3),
+      ),
+    };
+  }
+  unwrapped.lineStringBatch = newLine;
+
+  const polygonBatch = batch.polygonBatch;
+  /** @type {import('./MixedGeometryBatch.js').PolygonGeometryBatch} */
+  const newPolygon = {
+    entries: {},
+    geometriesCount: polygonBatch.geometriesCount,
+    verticesCount: polygonBatch.verticesCount,
+    ringsCount: polygonBatch.ringsCount,
+  };
+  for (const uid in polygonBatch.entries) {
+    const entry = polygonBatch.entries[uid];
+    /** @type {Array<Array<number>>} */
+    const flatCoordss = [];
+    for (let i = 0; i < entry.flatCoordss.length; ++i) {
+      const ringCounts = entry.ringsVerticesCounts?.[i];
+      if (!ringCounts) {
+        continue;
+      }
+      /** @type {Array<number>} */
+      const holes = [];
+      let total = 0;
+      for (let r = 0; r < ringCounts.length - 1; ++r) {
+        total += ringCounts[r];
+        holes.push(total);
+      }
+      flatCoordss.push(
+        unwrapPolygonFlatCoordinates(
+          entry.flatCoordss[i],
+          holes,
+          unwrapCenterX,
+          worldWidth,
+        ),
+      );
+    }
+    newPolygon.entries[uid] = {
+      ...entry,
+      flatCoordss,
+    };
+  }
+  unwrapped.polygonBatch = newPolygon;
+
+  const pointBatch = batch.pointBatch;
+  /** @type {import('./MixedGeometryBatch.js').PointGeometryBatch} */
+  const newPoint = {
+    entries: {},
+    geometriesCount: pointBatch.geometriesCount,
+  };
+  for (const uid in pointBatch.entries) {
+    const entry = pointBatch.entries[uid];
+    newPoint.entries[uid] = {
+      ...entry,
+      flatCoordss: entry.flatCoordss.map((coords) =>
+        unwrapFlatCoordinatesX(coords, unwrapCenterX, worldWidth, 2),
+      ),
+    };
+  }
+  unwrapped.pointBatch = newPoint;
+  return unwrapped;
+}
 
 const tmpColor = /** @type {Array<number>} */ ([]);
+
+/**
+ * @typedef {Object} GenerateBuffersOptions
+ * @property {boolean} [skipText] Skip GPU glyph buffer generation.
+ * @property {number} [maxSegmentLength] Densify long segments before upload (source units).
+ * @property {number} [maxTriangleEdgeLength] Skip fill triangles with |Δx| longer
+ *     than this (source units); antimeridian-spanning diagonals when reprojecting.
+ * @property {import("../../extent.js").Extent} [clipExtent] Drop fill triangles
+ *     with any vertex outside this source extent when reprojecting.
+ * @property {number} [unwrapCenterX] Dateline unwrap center for earcut (source X).
+ * @property {number} [worldWidth] Source world width for dateline unwrap and densify span limits.
+ * @property {number} [maxTargetTriangleEdgeLength] Drop fill triangles whose
+ *     edges exceed this length after projecting to the view CRS.
+ * @property {function(import("../../coordinate.js").Coordinate): (import("../../coordinate.js").Coordinate|null)} [projectToTarget]
+ *     Source→target for fill clipping and for baking line-label angles under reprojection.
+ * @property {number} [viewRotation] View rotation for text-rotate-with-view labels.
+ */
 
 /** @type {Worker|undefined} */
 let WEBGL_WORKER;
@@ -118,7 +350,7 @@ export const Attributes = {
  * @property {WebGLArrayBufferSet|null} polygonBuffers Array containing indices and vertices buffers for polygons
  * @property {WebGLArrayBufferSet|null} lineStringBuffers Array containing indices and vertices buffers for line strings
  * @property {WebGLArrayBufferSet|null} pointBuffers Array containing indices and vertices buffers for points
- * @property {string|null} textInstructionsKey Key corresponding to a text instructions set
+ * @property {WebGLArrayBufferSet|null} glyphBuffers Array containing indices and instance buffers for text glyphs
  * @property {import("../../transform.js").Transform} invertVerticesTransform Inverse of the transform applied when generating buffers
  */
 
@@ -164,6 +396,7 @@ export const Attributes = {
  * @property {SubRenderPass} [fillRenderPass] Fill render pass; undefined if no fill in pass
  * @property {SubRenderPass} [strokeRenderPass] Stroke render pass; undefined if no stroke in pass
  * @property {SubRenderPass} [symbolRenderPass] Symbol render pass; undefined if no symbol in pass
+ * @property {SubRenderPass} [textRenderPass] Text glyph render pass; undefined if no text
  */
 
 /**
@@ -388,34 +621,70 @@ class VectorStyleRenderer extends Disposable {
     this.hasSymbol_ = this.renderPasses_.some((pass) => pass.symbolRenderPass);
     this.hasText_ = this.flatStyle && hasTextStyle(this.flatStyle);
 
+    /**
+     * @type {SubRenderPass|null}
+     * @private
+     */
+    this.textRenderPass_ = null;
+
+    /**
+     * @type {FontAtlas|null}
+     * @private
+     */
+    this.fontAtlas_ = null;
+
+    /**
+     * @type {WebGLTexture|null}
+     * @private
+     */
+    this.atlasTexture_ = null;
+
+    /**
+     * @type {boolean}
+     * @private
+     */
+    this.atlasUploaded_ = false;
+
+    /**
+     * @type {import('../../style/Style.js').StyleFunction|null}
+     * @private
+     */
+    this.textStyleFunction_ = null;
+
     if (this.hasText_) {
-      /**
-       * @private
-       */
-      this.textOverlayCanvas_ = /** @type {HTMLCanvasElement} */ (
-        createCanvasContext2D().canvas
+      this.fontAtlas_ = new FontAtlas();
+      // Evaluate only text-* properties so fill/stroke/circle exprs that
+      // reference missing feature props do not throw during glyph layout.
+      const textFlatStyle = stripNonTextStyleProperties(
+        structuredClone(
+          /** @type {import('../../style/flat.js').FlatStyleLike} */ (
+            this.flatStyle
+          ),
+        ),
       );
-
-      /**
-       * @type {CanvasRenderingContext2D|null}
-       * @private
-       */
-      this.textOverlayContext_ = this.textOverlayCanvas_.getContext('2d');
-
-      /**
-       * @type {import("../../Map.js").FrameState|null}
-       * @private
-       */
-      this.textOverlayRenderFrameState_ = null;
-
-      /**
-       * @type {Worker}
-       * @private
-       */
-      this.textOverlayWorker_ = createTextOverlayWorker();
-
-      /** @type {Set<string>} */
-      this.textOverlayRenderList_ = new Set();
+      this.textStyleFunction_ = flatStyleLikeToStyleFunction(textFlatStyle);
+      this.textRenderPass_ = {
+        vertexShader: getGlyphVertexShader(),
+        fragmentShader: getGlyphFragmentShader(),
+        attributesDesc: [
+          {
+            name: GlyphAttributes.LOCAL_POSITION,
+            size: 2,
+            type: AttributeType.FLOAT,
+          },
+        ],
+        instancedAttributesDesc: [
+          {name: GlyphAttributes.POSITION, size: 2, type: AttributeType.FLOAT},
+          {name: GlyphAttributes.OFFSET, size: 2, type: AttributeType.FLOAT},
+          {name: GlyphAttributes.SIZE, size: 2, type: AttributeType.FLOAT},
+          {name: GlyphAttributes.TEX_COORD, size: 4, type: AttributeType.FLOAT},
+          {name: GlyphAttributes.COLOR, size: 4, type: AttributeType.FLOAT},
+          {name: GlyphAttributes.ANGLE, size: 1, type: AttributeType.FLOAT},
+        ],
+        instancePrimitiveVertexCount: 6,
+      };
+      // Atlas texture is bound explicitly in the glyph pass (not via helper
+      // uniforms) so it is not overwritten by other texture slots.
     }
 
     // this will initialize render passes with the given helper
@@ -426,9 +695,10 @@ class VectorStyleRenderer extends Disposable {
    * @param {import('./MixedGeometryBatch.js').default} geometryBatch Geometry batch
    * @param {import("../../transform.js").Transform} transform Transform to apply to coordinates
    * @param {number} resolution View resolution; used for text render instructions if any
+   * @param {GenerateBuffersOptions} [options] Buffer generation options
    * @return {Promise<WebGLBuffers>} A promise resolving to WebGL buffers; buffer sets are set to `null` if nothing to render
    */
-  async generateBuffers(geometryBatch, transform, resolution) {
+  async generateBuffers(geometryBatch, transform, resolution, options) {
     // also return the inverse of the transform that was applied when generating buffers
     const invertVerticesTransform = makeInverseTransform(
       createTransform(),
@@ -440,59 +710,157 @@ class VectorStyleRenderer extends Disposable {
         polygonBuffers: null,
         lineStringBuffers: null,
         pointBuffers: null,
+        glyphBuffers: null,
         invertVerticesTransform: invertVerticesTransform,
-        textInstructionsKey: null,
       };
     }
-    const labelsArray = new LabelsArray();
+    const skipText = options?.skipText;
+    const projectToTarget = options?.projectToTarget;
+    const maxSegmentLength = options?.maxSegmentLength || 0;
+    // Unwrap before densify so midpoints are inserted on the short arc.
+    let batchForBuffers = geometryBatch;
+    if (
+      options?.unwrapCenterX !== undefined &&
+      options?.worldWidth &&
+      options.worldWidth > 0
+    ) {
+      batchForBuffers = unwrapGeometryBatchX(
+        batchForBuffers,
+        options.unwrapCenterX,
+        options.worldWidth,
+      );
+    }
+    if (maxSegmentLength > 0) {
+      // Half-world span: never densify antimeridian chords the long way.
+      const maxSpanX =
+        options?.worldWidth && options.worldWidth > 0
+          ? options.worldWidth * 0.5
+          : 0;
+      batchForBuffers = densifyGeometryBatch(
+        batchForBuffers,
+        maxSegmentLength,
+        maxSpanX,
+      );
+    }
+
+    const gpuLabelsArray = new LabelsArray();
     const renderInstructions = this.generateRenderInstructions_(
-      geometryBatch,
-      labelsArray,
+      batchForBuffers,
+      gpuLabelsArray,
       transform,
     );
-    const [
-      textInstructionsKey,
-      polygonBuffers,
-      lineStringBuffers,
-      pointBuffers,
-    ] = await Promise.all([
-      this.hasText_
-        ? this.generateTextInstructions_(
-            renderInstructions,
-            labelsArray,
-            transform,
-            resolution,
-          )
-        : null,
-      this.hasFill_
-        ? this.generateBuffersForType_(
-            renderInstructions.polygonInstructions,
-            'Polygon',
-            transform,
-          )
-        : null,
-      this.hasStroke_
-        ? this.generateBuffersForType_(
-            renderInstructions.lineStringInstructions,
-            'LineString',
-            transform,
-          )
-        : null,
-      this.hasSymbol_
-        ? this.generateBuffersForType_(
-            renderInstructions.pointInstructions,
-            'Point',
-            transform,
-          )
-        : null,
-    ]);
+
+    /** @type {Promise<WebGLArrayBufferSet|null>|null} */
+    let glyphBuffersPromise = null;
+    if (
+      this.hasText_ &&
+      !skipText &&
+      this.textStyleFunction_ &&
+      this.fontAtlas_
+    ) {
+      glyphBuffersPromise = Promise.resolve(
+        this.generateGlyphBuffers_(
+          batchForBuffers,
+          transform,
+          resolution || 1,
+          projectToTarget,
+          options?.viewRotation || 0,
+        ),
+      );
+    }
+
+    const [glyphBuffers, polygonBuffers, lineStringBuffers, pointBuffers] =
+      await Promise.all([
+        glyphBuffersPromise,
+        this.hasFill_
+          ? this.generateBuffersForType_(
+              renderInstructions.polygonInstructions,
+              'Polygon',
+              transform,
+              options?.maxTriangleEdgeLength || 0,
+              options?.clipExtent || null,
+              options?.unwrapCenterX,
+              options?.worldWidth || 0,
+              options?.maxTargetTriangleEdgeLength || 0,
+              projectToTarget,
+            )
+          : null,
+        this.hasStroke_
+          ? this.generateBuffersForType_(
+              renderInstructions.lineStringInstructions,
+              'LineString',
+              transform,
+            )
+          : null,
+        this.hasSymbol_
+          ? this.generateBuffersForType_(
+              renderInstructions.pointInstructions,
+              'Point',
+              transform,
+            )
+          : null,
+      ]);
     return {
       polygonBuffers: polygonBuffers ?? null,
       lineStringBuffers: lineStringBuffers ?? null,
       pointBuffers: pointBuffers ?? null,
+      glyphBuffers: glyphBuffers ?? null,
       invertVerticesTransform: invertVerticesTransform,
-      textInstructionsKey,
     };
+  }
+
+  /**
+   * @param {import('./MixedGeometryBatch.js').default} batch Geometry batch
+   * @param {import("../../transform.js").Transform} transform Transform
+   * @param {number} resolution View resolution
+   * @param {function(import("../../coordinate.js").Coordinate): (import("../../coordinate.js").Coordinate|null)} [projectToTarget]
+   *     Optional exact forward projection for line label angles.
+   * @param {number} [viewRotation] View rotation for rotate-with-view.
+   * @return {WebGLArrayBufferSet|null} Glyph buffers
+   * @private
+   */
+  generateGlyphBuffers_(
+    batch,
+    transform,
+    resolution,
+    projectToTarget,
+    viewRotation,
+  ) {
+    const instanceAttrs = generateGlyphInstanceAttributes(
+      batch,
+      /** @type {import('../../style/Style.js').StyleFunction} */ (
+        this.textStyleFunction_
+      ),
+      transform,
+      {
+        atlas: /** @type {FontAtlas} */ (this.fontAtlas_),
+        resolution,
+        viewRotation: viewRotation || 0,
+        projectToTarget,
+      },
+    );
+    if (!instanceAttrs.length) {
+      return null;
+    }
+    const mesh = createGlyphQuadMesh();
+    const indicesBuffer = new WebGLArrayBuffer(
+      ELEMENT_ARRAY_BUFFER,
+      DYNAMIC_DRAW,
+    ).fromArrayBuffer(/** @type {ArrayBuffer} */ (mesh.indices.buffer));
+    const vertexAttributesBuffer = new WebGLArrayBuffer(
+      ARRAY_BUFFER,
+      DYNAMIC_DRAW,
+    ).fromArrayBuffer(
+      /** @type {ArrayBuffer} */ (mesh.vertexAttributes.buffer),
+    );
+    const instanceAttributesBuffer = new WebGLArrayBuffer(
+      ARRAY_BUFFER,
+      DYNAMIC_DRAW,
+    ).fromArrayBuffer(/** @type {ArrayBuffer} */ (instanceAttrs.buffer));
+    this.helper_.flushBufferData(indicesBuffer);
+    this.helper_.flushBufferData(vertexAttributesBuffer);
+    this.helper_.flushBufferData(instanceAttributesBuffer);
+    return [indicesBuffer, vertexAttributesBuffer, instanceAttributesBuffer];
   }
 
   /**
@@ -503,36 +871,33 @@ class VectorStyleRenderer extends Disposable {
    * @private
    */
   generateRenderInstructions_(geometryBatch, labelsArray, transform) {
-    const polygonInstructions =
-      this.hasFill_ || this.hasText_ // if we do text rendering we need render instructions for all geometry types
-        ? generatePolygonRenderInstructions(
-            geometryBatch.polygonBatch,
-            new Float32Array(0),
-            labelsArray,
-            this.customAttributes_,
-            transform,
-          )
-        : null;
-    const lineStringInstructions =
-      this.hasStroke_ || this.hasText_
-        ? generateLineStringRenderInstructions(
-            geometryBatch.lineStringBatch,
-            new Float32Array(0),
-            labelsArray,
-            this.customAttributes_,
-            transform,
-          )
-        : null;
-    const pointInstructions =
-      this.hasSymbol_ || this.hasText_
-        ? generatePointRenderInstructions(
-            geometryBatch.pointBatch,
-            new Float32Array(0),
-            labelsArray,
-            this.customAttributes_,
-            transform,
-          )
-        : null;
+    const polygonInstructions = this.hasFill_
+      ? generatePolygonRenderInstructions(
+          geometryBatch.polygonBatch,
+          new Float32Array(0),
+          labelsArray,
+          this.customAttributes_,
+          transform,
+        )
+      : null;
+    const lineStringInstructions = this.hasStroke_
+      ? generateLineStringRenderInstructions(
+          geometryBatch.lineStringBatch,
+          new Float32Array(0),
+          labelsArray,
+          this.customAttributes_,
+          transform,
+        )
+      : null;
+    const pointInstructions = this.hasSymbol_
+      ? generatePointRenderInstructions(
+          geometryBatch.pointBatch,
+          new Float32Array(0),
+          labelsArray,
+          this.customAttributes_,
+          transform,
+        )
+      : null;
 
     return {
       polygonInstructions,
@@ -545,12 +910,101 @@ class VectorStyleRenderer extends Disposable {
    * @param {Float32Array|null} renderInstructions Render instructions
    * @param {import("../../geom/Geometry.js").Type} geometryType Geometry type
    * @param {import("../../transform.js").Transform} transform Transform to apply to coordinates
+   * @param {number} [maxTriangleEdgeLength] Max fill triangle |Δx| (source units).
+   * @param {import("../../extent.js").Extent|null} [clipExtent] Cull fill triangles outside extent.
+   * @param {number} [unwrapCenterX] Dateline unwrap center for earcut.
+   * @param {number} [worldWidth] Source world width for unwrap.
+   * @param {number} [maxTargetTriangleEdgeLength] Max edge length in target CRS.
+   * @param {function(import("../../coordinate.js").Coordinate): (import("../../coordinate.js").Coordinate|null)} [projectToTarget] Source→target.
    * @return {Promise<WebGLArrayBufferSet|undefined>|null} Indices buffer and vertices buffer; null if nothing to render
    * @private
    */
-  generateBuffersForType_(renderInstructions, geometryType, transform) {
+  generateBuffersForType_(
+    renderInstructions,
+    geometryType,
+    transform,
+    maxTriangleEdgeLength,
+    clipExtent,
+    unwrapCenterX,
+    worldWidth,
+    maxTargetTriangleEdgeLength,
+    projectToTarget,
+  ) {
     if (renderInstructions === null) {
       return null;
+    }
+
+    // Target-space earcut needs projectToTarget on the main thread (worker
+    // has no projection/warp field). Vertex XY are then rewritten to target
+    // CRS so GPU edges match the triangulation (warp disabled at fill draw).
+    if (geometryType === 'Polygon' && projectToTarget) {
+      return Promise.resolve().then(() => {
+        if (!this.helper_.getGL()) {
+          return;
+        }
+        const customAttributesSize = getCustomAttributesSize(
+          this.customAttributes_,
+        );
+        /** @type {Array<number>} */
+        const vertices = [];
+        /** @type {Array<number>} */
+        const indices = [];
+        let offset = 0;
+        while (offset < renderInstructions.length) {
+          offset = writePolygonTrianglesToBuffers(
+            renderInstructions,
+            offset,
+            vertices,
+            indices,
+            customAttributesSize,
+            maxTriangleEdgeLength || 0,
+            clipExtent || null,
+            unwrapCenterX,
+            worldWidth || 0,
+            projectToTarget,
+          );
+        }
+        const attrsPerVertex = 2 + customAttributesSize;
+        const refined =
+          maxTargetTriangleEdgeLength > 0
+            ? filterTrianglesByTargetEdge(
+                Float32Array.from(vertices),
+                Uint32Array.from(indices),
+                attrsPerVertex,
+                projectToTarget,
+                maxTargetTriangleEdgeLength,
+              )
+            : {
+                vertices: Float32Array.from(vertices),
+                indices: Uint32Array.from(indices),
+              };
+        // Keep source XY so fill and stroke share the same GPU warp path
+        // (preprojecting fill alone left fill/stroke gaps).
+        const indicesBuffer = new WebGLArrayBuffer(
+          ELEMENT_ARRAY_BUFFER,
+          DYNAMIC_DRAW,
+        ).fromArrayBuffer(
+          refined.indices.buffer.slice(0, refined.indices.byteLength),
+        );
+        const vertexAttributesBuffer = new WebGLArrayBuffer(
+          ARRAY_BUFFER,
+          DYNAMIC_DRAW,
+        ).fromArrayBuffer(
+          refined.vertices.buffer.slice(0, refined.vertices.byteLength),
+        );
+        const instanceAttributesBuffer = new WebGLArrayBuffer(
+          ARRAY_BUFFER,
+          DYNAMIC_DRAW,
+        ).fromArrayBuffer(new Float32Array(0).buffer);
+        this.helper_.flushBufferData(indicesBuffer);
+        this.helper_.flushBufferData(vertexAttributesBuffer);
+        this.helper_.flushBufferData(instanceAttributesBuffer);
+        return [
+          indicesBuffer,
+          vertexAttributesBuffer,
+          instanceAttributesBuffer,
+        ];
+      });
     }
 
     let messageType;
@@ -574,6 +1028,10 @@ class VectorStyleRenderer extends Disposable {
       renderInstructions: renderInstructions.buffer,
       renderInstructionsTransform: transform,
       customAttributesSize: getCustomAttributesSize(this.customAttributes_),
+      maxTriangleEdgeLength: maxTriangleEdgeLength || 0,
+      clipExtent: clipExtent || undefined,
+      unwrapCenterX,
+      worldWidth: worldWidth || 0,
     };
 
     return messageWorker(getWebGLWorker(), message, [
@@ -618,77 +1076,6 @@ class VectorStyleRenderer extends Disposable {
   }
 
   /**
-   * @param {RenderInstructions} renderInstructions Render instructions
-   * @param {import('../../webgl/LabelsArray.js').default} labelsArray Labels array
-   * @param {import("../../transform.js").Transform} transform Transform to apply to coordinates
-   * @param {number} resolution View resolution to be used as a basis when computing text overflow
-   * @return {Promise<string|null>|null} Resolves to a key corresponding to the text draw instructions; null if no text to render
-   * @private
-   */
-  generateTextInstructions_(
-    renderInstructions,
-    labelsArray,
-    transform,
-    resolution,
-  ) {
-    const transferables = [labelsArray.getArray().buffer];
-    let polygonRenderInstructions = null;
-    let lineStringRenderInstructions = null;
-    let pointRenderInstructions = null;
-    if (renderInstructions.polygonInstructions) {
-      polygonRenderInstructions = new Float32Array(
-        renderInstructions.polygonInstructions,
-      ).buffer;
-      transferables.push(polygonRenderInstructions);
-    }
-    if (renderInstructions.lineStringInstructions) {
-      lineStringRenderInstructions = new Float32Array(
-        renderInstructions.lineStringInstructions,
-      ).buffer;
-      transferables.push(lineStringRenderInstructions);
-    }
-    if (renderInstructions.pointInstructions) {
-      pointRenderInstructions = new Float32Array(
-        renderInstructions.pointInstructions,
-      ).buffer;
-      transferables.push(pointRenderInstructions);
-    }
-    const customAttributesSizes = Object.keys(this.customAttributes_).reduce(
-      (prev, curr) => ({
-        ...prev,
-        [curr]: this.customAttributes_[curr].size || 1,
-      }),
-      {},
-    );
-
-    // load render instructions in text overlay worker
-    /** @type {import('./constants.js').TextOverlayWorkerMessage} */
-    const message = {
-      type: TextOverlayWorkerMessageType.BUILD_INSTRUCTIONS,
-      polygonRenderInstructions: polygonRenderInstructions ?? undefined,
-      lineStringRenderInstructions: lineStringRenderInstructions ?? undefined,
-      pointRenderInstructions: pointRenderInstructions ?? undefined,
-      labelsArray: labelsArray.getArray(),
-      style: this.flatStyle ?? undefined,
-      customAttributesSizes,
-      renderInstructionsTransform: transform,
-      resolution,
-    };
-
-    return messageWorker(this.textOverlayWorker_, message, transferables).then(
-      (data) => {
-        const received =
-          /** @type {import('./constants.js').TextOverlayWorkerMessage} */ (
-            data
-          );
-
-        // we're getting a key from the worker: these will be used later on to ask for render or disposal
-        return received.instructionsSetKey ?? null;
-      },
-    );
-  }
-
-  /**
    * Render the geometries in the given buffers.
    * @param {WebGLBuffers} buffers WebGL Buffers to draw
    * @param {import("../../Map.js").FrameState} frameState Frame state
@@ -727,9 +1114,61 @@ class VectorStyleRenderer extends Disposable {
           preRenderCallback,
         );
     }
-    if (buffers.textInstructionsKey) {
-      this.renderText_(buffers);
+    if (this.textRenderPass_ && buffers.glyphBuffers) {
+      this.renderInternal_(
+        buffers.glyphBuffers[0],
+        buffers.glyphBuffers[1],
+        buffers.glyphBuffers[2],
+        this.textRenderPass_,
+        frameState,
+        () => {
+          preRenderCallback();
+          this.bindGlyphAtlas_();
+        },
+      );
     }
+  }
+
+  /**
+   * Upload/bind the font atlas for the glyph render pass.
+   * @private
+   */
+  bindGlyphAtlas_() {
+    if (!this.fontAtlas_ || !this.helper_) {
+      return;
+    }
+    const gl = this.helper_.getGL();
+    if (!this.atlasTexture_) {
+      this.atlasTexture_ = gl.createTexture();
+    }
+    const atlas = this.fontAtlas_;
+    this.helper_.bindTexture(
+      this.atlasTexture_,
+      0,
+      GlyphUniforms.ATLAS,
+    );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    if (atlas.isDirty() || !this.atlasUploaded_) {
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texImage2D(
+        gl.TEXTURE_2D,
+        0,
+        gl.RGBA,
+        gl.RGBA,
+        gl.UNSIGNED_BYTE,
+        /** @type {TexImageSource} */ (atlas.canvas),
+      );
+      this.atlasUploaded_ = true;
+      atlas.markClean();
+    }
+    this.helper_.setUniformFloatVec2(
+      GlyphUniforms.ATLAS_SIZE,
+      atlas.getSize(),
+    );
   }
 
   /**
@@ -788,73 +1227,6 @@ class VectorStyleRenderer extends Disposable {
   }
 
   /**
-   * @param {WebGLBuffers} buffers WebGL Buffers to draw
-   * @private
-   */
-  renderText_(buffers) {
-    const key = buffers.textInstructionsKey;
-    if (key) {
-      this.textOverlayRenderList_.add(key);
-    }
-  }
-
-  /**
-   * Render the geometries in the given buffers.
-   * @param {import("../../Map.js").FrameState} frameState Frame state
-   * @return {Promise<void>} A promise resolving after the post rendering step is over
-   */
-  finalizeTextRender(frameState) {
-    if (!this.hasText_) {
-      return Promise.resolve();
-    }
-
-    const textOverlayCanvas = /** @type {HTMLCanvasElement} */ (
-      this.textOverlayCanvas_
-    );
-    const textOverlayContext = /** @type {CanvasRenderingContext2D} */ (
-      this.textOverlayContext_
-    );
-
-    const message = {
-      type: TextOverlayWorkerMessageType.RENDER,
-      frameState: serializeFrameState(frameState),
-      batchesToRender: this.textOverlayRenderList_,
-    };
-
-    return messageWorker(this.textOverlayWorker_, message).then((data) => {
-      const received =
-        /** @type {import('./constants.js').TextOverlayWorkerMessage} */ (data);
-
-      // if no render data returned, do not process it
-      if (received.imageData) {
-        this.textOverlayRenderFrameState_ =
-          received.frameState !== undefined ? received.frameState : null;
-
-        // the rendered image data is copied to the canvas and then given back to the worker
-        const imageData = received.imageData;
-        if (
-          imageData.width !== textOverlayCanvas.width ||
-          imageData.height !== textOverlayCanvas.height
-        ) {
-          textOverlayCanvas.width = imageData.width;
-          textOverlayCanvas.height = imageData.height;
-        } else {
-          textOverlayContext.clearRect(
-            0,
-            0,
-            textOverlayCanvas.width,
-            textOverlayCanvas.height,
-          );
-        }
-        textOverlayContext.drawImage(imageData, 0, 0);
-        imageData.close();
-      }
-
-      this.textOverlayRenderList_.clear();
-    });
-  }
-
-  /**
    * @param {import('../../webgl/Helper.js').default} helper Helper
    * @param {WebGLBuffers|null} [buffers] WebGL Buffers to reload if any
    */
@@ -881,6 +1253,12 @@ class VectorStyleRenderer extends Disposable {
         );
       }
     }
+    if (this.textRenderPass_) {
+      this.textRenderPass_.program = this.helper_.getProgram(
+        this.textRenderPass_.fragmentShader,
+        this.textRenderPass_.vertexShader,
+      );
+    }
     this.helper_.addUniforms(this.uniforms_);
 
     if (buffers) {
@@ -899,26 +1277,12 @@ class VectorStyleRenderer extends Disposable {
         this.helper_.flushBufferData(buffers.pointBuffers[1]);
         this.helper_.flushBufferData(buffers.pointBuffers[2]);
       }
+      if (buffers.glyphBuffers) {
+        this.helper_.flushBufferData(buffers.glyphBuffers[0]);
+        this.helper_.flushBufferData(buffers.glyphBuffers[1]);
+        this.helper_.flushBufferData(buffers.glyphBuffers[2]);
+      }
     }
-  }
-
-  getTextOverlayCanvas() {
-    return this.textOverlayCanvas_;
-  }
-
-  getTextOverlayFrameState() {
-    return this.textOverlayRenderFrameState_;
-  }
-
-  /**
-   * Dispose of text instructions in worker.
-   * @param {string} key Key corresponding to the instructions set to dispose
-   */
-  disposeTextInstructions(key) {
-    this.textOverlayWorker_?.postMessage({
-      type: TextOverlayWorkerMessageType.DISPOSE_INSTRUCTIONS,
-      instructionsSetKey: key,
-    });
   }
 
   /**
@@ -926,7 +1290,6 @@ class VectorStyleRenderer extends Disposable {
    * @override
    */
   disposeInternal() {
-    this.textOverlayWorker_?.terminate();
     super.disposeInternal();
   }
 }

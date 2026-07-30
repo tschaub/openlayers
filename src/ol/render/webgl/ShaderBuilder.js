@@ -4,6 +4,7 @@
  */
 import {colorToGlsl, numberToGlsl, stringToGlsl} from '../../expr/gpu.js';
 import {createDefaultStyle} from '../../style/flat.js';
+import {getSourceToTargetGlsl} from '../../webgl/reproj/WarpField.js';
 import {LINESTRING_ANGLE_COSINE_CUTOFF} from './bufferUtil.js';
 import {UNPACK_COLOR_FN} from './compileUtil.js';
 import {FLOAT64_ARITHMETIC_FN} from './float64Util.js';
@@ -36,13 +37,15 @@ const float PI = 3.141592653589793238;
 const float TWO_PI = 2.0 * PI;
 float currentLineMetric = 0.; // an actual value will be used in the stroke shaders
 
+${getSourceToTargetGlsl()}
+
 vec2 pxToWorld(vec2 pxPos) {
   vec2 screenPos = 2.0 * pxPos / u_viewportSizePx - 1.0;
   return (u_invertProjectionMatrix * vec4(screenPos, 0.0, 1.0)).xy;
 }
 
 vec2 worldToPx(vec2 worldPos) {
-  vec4 screenPos = u_projectionMatrix * vec4(worldPos, 0.0, 1.0);
+  vec4 screenPos = u_projectionMatrix * vec4(sourceToTarget(worldPos), 0.0, 1.0);
   return (0.5 * screenPos.xy + 0.5) * u_viewportSizePx;
 }
 ${UNPACK_COLOR_FN}
@@ -608,7 +611,7 @@ void main(void) {
   float c = cos(-angle);
   float s = sin(-angle);
   offsetPx = vec2(c * offsetPx.x - s * offsetPx.y, s * offsetPx.x + c * offsetPx.y);
-  vec4 center = u_projectionMatrix * vec4(a_position, 0.0, 1.0);
+  vec4 center = u_projectionMatrix * vec4(sourceToTarget(a_position), 0.0, 1.0);
   gl_Position = center + vec4(pxToScreen(offsetPx), u_depth, 0.);
   vec4 texCoord = ${this.texCoordExpression_};
   float u = mix(texCoord.s, texCoord.p, a_localPosition.x * 0.5 + 0.5);
@@ -754,6 +757,12 @@ void main(void) {
 
   float lineWidth = ${this.strokeWidthExpression_};
   float lineOffsetPx = ${this.strokeOffsetExpression_};
+
+  // Drop edges that cross the projection cut (e.g. antimeridian → Mollweide).
+  if (crossesProjectionCut(a_segmentStart, a_segmentEnd)) {
+    gl_Position = vec4(2.0, 2.0, 0.0, 0.0);
+    return;
+  }
 
   // compute segment start/end in px with offset
   vec2 segmentStartPx = worldToPx(a_segmentStart);
@@ -1006,7 +1015,7 @@ varying ${attribute.varyingType} ${attribute.varyingName};`,
   .join('\n')}
 ${this.vertexShaderFunctions_.join('\n')}
 void main(void) {
-  gl_Position = u_projectionMatrix * vec4(a_position, u_depth, 1.0);
+  gl_Position = u_projectionMatrix * vec4(sourceToTarget(a_position), u_depth, 1.0);
   v_hitColor = unpackColor(a_hitColor);
 ${
   this.fillPatternSizeExpression_ !== null

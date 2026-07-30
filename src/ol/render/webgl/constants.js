@@ -29,6 +29,10 @@ export const TextOverlayWorkerMessageType = {
  * @property {WebGLWorkerMessageType} type Message type
  * @property {ArrayBufferLike} renderInstructions render instructions raw binary buffer.
  * @property {number} [customAttributesSize] Amount of hit detection + custom attributes count in the render instructions.
+ * @property {number} [maxTriangleEdgeLength] Max fill triangle |Δx| in source units (0 = no filter).
+ * @property {Array<number>} [clipExtent] Drop fill triangles with a vertex outside this extent.
+ * @property {number} [unwrapCenterX] Center X for dateline unwrap before earcut.
+ * @property {number} [worldWidth] Source world width for dateline unwrap and densify span limits.
  * @property {ArrayBuffer} [indicesBuffer] Indices array raw binary buffer (sent by the worker).
  * @property {ArrayBuffer} [vertexAttributesBuffer] Vertex attributes array raw binary buffer (sent by the worker).
  * @property {ArrayBuffer} [instanceAttributesBuffer] Instance attributes array raw binary buffer (sent by the worker).

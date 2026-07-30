@@ -2,12 +2,10 @@
  * @module ol/renderer/webgl/VectorTileLayer
  */
 import EventType from '../../events/EventType.js';
+import {getWidth} from '../../extent.js';
+import {getTransform} from '../../proj.js';
 import {ShaderBuilder} from '../../render/webgl/ShaderBuilder.js';
-import {
-  createPostProcessDefinition,
-  hasTextStyle,
-  TextUniforms,
-} from '../../render/webgl/textUtil.js';
+import {hasTextStyle} from '../../render/webgl/textUtil.js';
 import VectorStyleRenderer, {
   convertStyleToShaders,
   toFlatStyleLike,
@@ -18,21 +16,27 @@ import {
   multiply as multiplyTransform,
   setFromArray as setFromTransform,
 } from '../../transform.js';
+import {getUid} from '../../util.js';
 import {fromTransform as mat4FromTransform} from '../../vec/mat4.js';
 import {ELEMENT_ARRAY_BUFFER, STATIC_DRAW} from '../../webgl.js';
 import WebGLArrayBuffer from '../../webgl/Buffer.js';
 import {AttributeType} from '../../webgl/Helper.js';
 import WebGLRenderTarget from '../../webgl/RenderTarget.js';
+import WarpField from '../../webgl/reproj/WarpField.js';
 import TileGeometry from '../../webgl/TileGeometry.js';
 import WebGLBaseTileLayerRenderer, {
   Uniforms as BaseUniforms,
+  getCacheKey,
 } from './TileLayerBase.js';
-import {applyVectorUniforms, VectorUniforms} from './vectorUtil.js';
+import {
+  applyVectorUniforms,
+  applyWarpUniforms,
+  VectorUniforms,
+} from './vectorUtil.js';
 
 export const Uniforms = {
   ...BaseUniforms,
   ...VectorUniforms,
-  ...TextUniforms,
   TILE_MASK_TEXTURE: 'u_depthMask',
   TILE_ZOOM_LEVEL: 'u_tileZoomLevel',
 };
@@ -188,32 +192,8 @@ class WebGLVectorTileLayerRenderer extends WebGLBaseTileLayerRenderer {
     this.styleVariables_ = options.variables;
     this.style_ = options.style;
 
-    // add text rendering post process if needed
     const flatStyle = toFlatStyleLike(this.style_);
-    const newHasText = !!flatStyle && hasTextStyle(flatStyle);
-
-    if (newHasText && !this.hasText_) {
-      // add the text overlay post-process
-      this.setPostProcesses([
-        createPostProcessDefinition(
-          () =>
-            this.styleRenderer_?.getTextOverlayCanvas() ??
-            /** @type {HTMLCanvasElement} */ (document.createElement('canvas')),
-          () => {
-            const state =
-              this.styleRenderer_?.getTextOverlayFrameState() ??
-              this.frameState;
-            return /** @type {import('../../Map.js').FrameState} */ (state);
-          },
-        ),
-        ...this.getPostProcesses(),
-      ]);
-    } else if (!newHasText && this.hasText_) {
-      // remove the text overlay post-process (always in first place)
-      this.setPostProcesses(this.getPostProcesses().slice(1));
-    }
-
-    this.hasText_ = newHasText;
+    this.hasText_ = !!flatStyle && hasTextStyle(flatStyle);
   }
 
   /**
@@ -286,6 +266,40 @@ class WebGLVectorTileLayerRenderer extends WebGLBaseTileLayerRenderer {
       /** @type {import("../../render/webgl/VectorStyleRenderer.js").default} */ (
         this.styleRenderer_
       ),
+      () => {
+        const viewRotation = this.frameState?.viewState.rotation || 0;
+        if (!this.reprojecting_) {
+          return {viewRotation};
+        }
+        const source = this.getLayer().getSource();
+        const sourceProj = source?.getProjection();
+        const sourceWorld = sourceProj && sourceProj.getExtent();
+        const maxTriangleEdgeLength =
+          sourceProj && sourceProj.canWrapX() && sourceWorld
+            ? getWidth(sourceWorld) * 0.5
+            : 0;
+        const viewProj =
+          this.frameState?.viewState.projection ||
+          this.getLayer().getMapInternal()?.getView()?.getProjection();
+        if (!sourceProj || !viewProj) {
+          return {maxTriangleEdgeLength, viewRotation};
+        }
+        const sourceTiles = options.tile.getSourceTiles();
+        const tileExtent = sourceTiles[0]?.extent;
+        const originX = tileExtent ? tileExtent[0] : 0;
+        const originY = tileExtent ? tileExtent[1] : 0;
+        const forward = getTransform(sourceProj, viewProj);
+        if (!forward) {
+          return {maxTriangleEdgeLength, viewRotation};
+        }
+        return {
+          maxTriangleEdgeLength,
+          viewRotation,
+          // Tile-local XY → source world → view CRS for line-label angles.
+          projectToTarget: (coord) =>
+            forward([coord[0] + originX, coord[1] + originY]),
+        };
+      },
     );
     // redraw the layer when the tile is ready
     const listener = () => {
@@ -324,6 +338,10 @@ class WebGLVectorTileLayerRenderer extends WebGLBaseTileLayerRenderer {
    * @override
    */
   beforeTilesMaskRender(frameState) {
+    // Tile masks assume a linear view-CRS transform; skip when warping.
+    if (this.reprojecting_) {
+      return false;
+    }
     const tileMaskTarget = this.tileMaskTarget_;
     const tileMaskProgram = this.tileMaskProgram_;
     if (!tileMaskTarget || !tileMaskProgram) {
@@ -350,22 +368,7 @@ class WebGLVectorTileLayerRenderer extends WebGLBaseTileLayerRenderer {
    * @param {import("../../Map.js").FrameState} frameState Frame state.
    * @override
    */
-  beforeFinalize(frameState) {
-    const styleRenderer = this.styleRenderer_;
-    if (this.hasText_ && styleRenderer) {
-      styleRenderer.finalizeTextRender(frameState).then(() => {
-        if (this.skipNextTextRender_) {
-          this.skipNextTextRender_ = false;
-          return;
-        }
-        // asking for a new render of the layer because the text overlay is now ready to be drawn;
-        // next time this happens we should skip this logic otherwise the layer enters an infinite render loop
-        this.skipNextTextRender_ = true;
-        this.layerRevision_++; // anticipating the layer revision after `layer.changed()`
-        this.getLayer().changed();
-      });
-    }
-  }
+  beforeFinalize(frameState) {}
 
   /**
    * @param {import("../../webgl/TileGeometry.js").default} tileRepresentation Tile representation.
@@ -418,6 +421,8 @@ class WebGLVectorTileLayerRenderer extends WebGLBaseTileLayerRenderer {
    * @param {number} tileZ Tile zoom level
    * @param {number} depth Depth of the tile
    * @param {import("../../Map.js").FrameState} frameState Frame state
+   * @param {import("../../webgl/reproj/WarpField.js").default|null|undefined} warpField Warp field when reprojecting
+   * @param {import("../../coordinate.js").Coordinate|undefined} sourceOrigin Tile origin in source CRS when reprojecting
    * @private
    */
   applyUniforms_(
@@ -427,12 +432,21 @@ class WebGLVectorTileLayerRenderer extends WebGLBaseTileLayerRenderer {
     tileZ,
     depth,
     frameState,
+    warpField,
+    sourceOrigin,
   ) {
     applyVectorUniforms(
       this.helper,
       this.currentFrameStateTransform_,
       batchInvertTransform,
       frameState,
+      warpField ? {patternsInSourceSpace: true} : undefined,
+    );
+    applyWarpUniforms(
+      this.helper,
+      warpField || null,
+      sourceOrigin,
+      frameState.viewState.projection,
     );
 
     this.helper.setUniformFloatValue(Uniforms.GLOBAL_ALPHA, alpha);
@@ -488,6 +502,76 @@ class WebGLVectorTileLayerRenderer extends WebGLBaseTileLayerRenderer {
         tileZ,
         depth,
         frameState,
+        null,
+        null,
+      );
+    });
+  }
+
+  /**
+   * @override
+   */
+  renderReprojTile(
+    tileRepresentation,
+    frameState,
+    renderExtent,
+    tileExtent,
+    depth,
+    gutter,
+    alpha,
+    offset,
+  ) {
+    const geomTile = /** @type {TileGeometry} */ (tileRepresentation);
+    const buffers = geomTile.buffers;
+    if (!geomTile.ready || !buffers) {
+      return;
+    }
+
+    const layer = this.getLayer();
+    const source = layer.getRenderSource();
+    const viewState = frameState.viewState;
+    const sourceProj = source.getProjection() || viewState.projection;
+    const targetProj = viewState.projection;
+    const tileGrid =
+      source.getTileGrid() || source.getTileGridForProjection(sourceProj);
+    const tileCoord = geomTile.tile.getTileCoord();
+    const sourceResolution = tileGrid.getResolution(tileCoord[0]);
+
+    const warpKey = [
+      getCacheKey(source, tileCoord),
+      offset,
+      getUid(sourceProj),
+      getUid(targetProj),
+      sourceResolution,
+    ].join('|');
+
+    /** @type {WarpField} */
+    let warpField;
+    if (this.reprojCache_.containsKey(warpKey)) {
+      warpField = /** @type {WarpField} */ (this.reprojCache_.get(warpKey));
+    } else {
+      warpField = new WarpField({
+        sourceProj,
+        targetProj,
+        sourceExtent: tileExtent,
+        sourceResolution,
+        sourceOffsetX: offset,
+      });
+      this.reprojCache_.set(warpKey, warpField);
+    }
+
+    const sourceOrigin = [tileExtent[0] + offset, tileExtent[1]];
+    const tileZ = tileCoord[0];
+    this.styleRenderer_.render(buffers, frameState, () => {
+      this.applyUniforms_(
+        alpha,
+        renderExtent,
+        buffers.invertVerticesTransform,
+        tileZ,
+        depth,
+        frameState,
+        warpField,
+        sourceOrigin,
       );
     });
   }

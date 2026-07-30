@@ -22,8 +22,10 @@ class TileGeometry extends BaseTileRepresentation {
   /**
    * @param {import("./BaseTileRepresentation.js").TileRepresentationOptions<TileType>} options The tile texture options.
    * @param {import("../render/webgl/VectorStyleRenderer.js").default} styleRenderer Vector style renderer
+   * @param {function(): import("../render/webgl/VectorStyleRenderer.js").GenerateBuffersOptions} [bufferOptionsGetter]
+   *     Optional per-upload buffer options (e.g. densify / project text while reprojecting).
    */
-  constructor(options, styleRenderer) {
+  constructor(options, styleRenderer, bufferOptionsGetter) {
     super(options);
 
     /**
@@ -35,6 +37,12 @@ class TileGeometry extends BaseTileRepresentation {
      * @private
      */
     this.styleRenderer_ = styleRenderer;
+
+    /**
+     * @private
+     * @type {function(): import("../render/webgl/VectorStyleRenderer.js").GenerateBuffersOptions}
+     */
+    this.bufferOptionsGetter_ = bufferOptionsGetter || (() => ({}));
 
     /**
      * @type {import("../render/webgl/VectorStyleRenderer.js").WebGLBuffers|null}
@@ -118,8 +126,14 @@ class TileGeometry extends BaseTileRepresentation {
 
     this.batch_.addFeatures(features);
 
+    // Densify in source units so GPU warp (when enabled) keeps stroke chords tight.
+    const maxSegmentLength = this.wantedResolution * 32;
+    const extraOptions = this.bufferOptionsGetter_();
     this.styleRenderer_
-      .generateBuffers(this.batch_, transform, this.wantedResolution)
+      .generateBuffers(this.batch_, transform, this.wantedResolution, {
+        maxSegmentLength,
+        ...extraOptions,
+      })
       .then((buffers) => {
         this.buffers = buffers;
         this.setReady();
@@ -148,9 +162,8 @@ class TileGeometry extends BaseTileRepresentation {
         disposeBuffersOfType(this.buffers.lineStringBuffers);
       this.buffers.polygonBuffers &&
         disposeBuffersOfType(this.buffers.polygonBuffers);
-      this.styleRenderer_.disposeTextInstructions(
-        this.buffers.textInstructionsKey ?? '',
-      );
+      this.buffers.glyphBuffers &&
+        disposeBuffersOfType(this.buffers.glyphBuffers);
     }
     super.disposeInternal();
   }

@@ -19,7 +19,7 @@ register(proj4);
 // A tile-multiple RGB GeoTIFF (no nodata, so no alpha band) reprojected to a
 // neighbouring UTM zone, which rotates the footprint.  A color style forces the
 // output alpha to 1, so the gaps the rotated reprojection leaves only render
-// transparent if the appended coverage band discards them.
+// transparent if uncovered areas are not drawn (warped mesh footprint).
 const source = new GeoTIFF({
   sources: [
     {
