@@ -104,7 +104,8 @@ export default defineConfig({
       },
     },
   },
+  appType: 'mpa',
   server: {
-    port: 3001,
+    port: 3000,
   },
 });
