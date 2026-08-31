@@ -16,6 +16,8 @@
     "test-browser": "vitest run --config test/browser/vitest.config.mjs",
     "test-node": "vitest run --config test/node/vitest.config.mjs",
     "test": "npm run test-browser && npm run test-node && npm run test-rendering -- --force",
+    "bench": "node test/performance/run.js",
+    "serve-bench": "vite --config test/performance/vite.config.js",
     "start": "npm run serve-examples",
     "serve-examples": "vite --config examples/config/vite.config.js",
     "build-examples": "shx rm -rf build/examples && vite build --config examples/config/vite.config.js",

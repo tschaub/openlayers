@@ -147,6 +147,8 @@
  * @property {StringExpression} [text-font='10px sans-serif'] Font style as [CSS `font`](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/font) value.
  * @property {NumberExpression} [text-max-angle=Math.PI/4] When `text-placement` is set to `'line'`, allow a maximum angle between adjacent characters.
  * The expected value is in radians, and the default is 45° (`Math.PI / 4`).
+ * @property {NumberExpression} [text-max-width] Maximum text width in pixels before wrapping. Only supported by WebGPU
+ * layers when `text-placement` is set to `'point'`.
  * @property {NumberExpression} [text-offset-x=0] Horizontal text offset in pixels. A positive will shift the text right.
  * @property {NumberExpression} [text-offset-y=0] Vertical text offset in pixels. A positive will shift the text down.
  * @property {BooleanExpression} [text-overflow=false] For polygon labels or when `placement` is set to `'line'`, allow text to exceed
